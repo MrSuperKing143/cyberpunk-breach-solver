@@ -29,15 +29,16 @@ Pure client-side static-export Next.js 16 app (`output: "export"` in `next.confi
 2. `BreachProtocolApp` (`components/breach-protocol-app.tsx`) orchestrates all state — preview, analysis result, editable puzzle, solver result
 3. "Analyze Screenshot" calls `analyzeBreachImage` (`lib/analysis/extract.ts`) which:
    - Lazy-loads OpenCV.js via `lib/analysis/opencv.ts`
-   - Builds a neon-hue HSV mask → finds contour candidates → scores each against expected position/aspect to locate the matrix, sequence, and buffer panels
-   - Segments token blobs with morphological dilation → clusters into rows/columns → OCRs each crop via Tesseract.js (`lib/analysis/ocr.ts`)
+   - Downsamples input to ≤1920px, builds a Canny edge mask, then locates each panel by finding the smallest contour containing a per-panel fractional anchor point (`panelAnchorPoints` in `extract.ts`)
+   - Trims frame borders via `trimEdgeNoise`, then finds grid lines via column/row projection sums (`matColSums`/`matRowSums` → `findPeaks` → `groupPeaks` → `centersToBounds`)
+   - Crops each cell, builds a neon-hue HSV + brightness binary mask, upscales 5×, and OCRs via Tesseract.js (`lib/analysis/ocr.ts`)
    - Fuzzy-maps raw OCR text onto the six allowed codes: `1C 55 7A BD E9 FF`
 4. Result populates an `EditablePuzzle` that the user can correct in `PuzzleEditor`
 5. "Solve Best Path" calls `solveBreachPuzzle` (`lib/solver/breach-solver.ts`) — pure synchronous DFS that enforces alternating row/column traversal and scores by completed sequences, then partial tokens, then spare buffer
 
 **Key types** (`lib/types/breach.ts`): `EditablePuzzle`, `AnalysisResult`, `SolverResult`, `BreachCode` (the six-value union), `DebugToken`.
 
-**Panel detection tuning** lives in `extract.ts`: `panelPadding` (fractional insets per panel) and `selectPanel` expectations (area ratio, aspect, target center). These constants were tuned against the screenshots in `sample-images/`.
+**Panel detection tuning** lives in `extract.ts`: `panelAnchorPoints` maps each panel key (`matrix`, `sequence`, `buffer`) to a fractional `[x, y]` coordinate within the expected panel region. If the buffer contour is not found, `estimateBufferRect` derives it geometrically from the matrix and sequence rects. These constants were tuned against the screenshots in `sample-images/`.
 
 **Styling**: SCSS modules per component under `styles/`, global styles in `styles/globals.scss`. Uses a custom cyberpunk font from `public/fonts/`.
 
