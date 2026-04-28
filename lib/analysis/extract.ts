@@ -18,26 +18,6 @@ interface PanelRects {
   buffer?: Rect;
 }
 
-interface TokenCandidate {
-  rect: Rect;
-  centerX: number;
-  centerY: number;
-}
-
-interface GroupedRow {
-  center: number;
-  items: TokenCandidate[];
-}
-
-const panelPadding: Record<PanelKey, { top: number; right: number; bottom: number; left: number }> =
-  {
-    // New Canny-based detection returns the exact cell/row area, so minimal insets needed.
-    matrix:   { top: 0.03, right: 0.05, bottom: 0.03, left: 0.05 },
-    // right=0.68 keeps only the left ~30% of the panel — enough for 4-token sequences
-    // while excluding the daemon description column that occupies the right ~65%.
-    sequence: { top: 0.05, right: 0.68, bottom: 0.05, left: 0.02 },
-    buffer:   { top: 0.22, right: 0.08, bottom: 0.18, left: 0.08 },
-  };
 
 // Fractional [x, y] anchor points within each panel's content area.
 // The detection finds the smallest contour that contains the anchor point.
@@ -77,15 +57,6 @@ function toRect(rect: { x: number; y: number; width: number; height: number }): 
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
-function insetRect(rect: Rect, padding: { top: number; right: number; bottom: number; left: number }): Rect {
-  return integerRect({
-    x: rect.x + rect.width * padding.left,
-    y: rect.y + rect.height * padding.top,
-    width: rect.width * (1 - padding.left - padding.right),
-    height: rect.height * (1 - padding.top - padding.bottom),
-  });
-}
-
 function unionRect(left: Rect, right: Rect): Rect {
   const x = Math.min(left.x, right.x);
   const y = Math.min(left.y, right.y);
@@ -100,43 +71,111 @@ function unionRect(left: Rect, right: Rect): Rect {
   };
 }
 
-function median(values: number[]) {
-  if (values.length === 0) {
-    return 0;
-  }
+// ---------------------------------------------------------------------------
+// Projection-based grid helpers
+// ---------------------------------------------------------------------------
 
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-
-  if (sorted.length % 2 === 1) {
-    return sorted[middle];
-  }
-
-  return (sorted[middle - 1] + sorted[middle]) / 2;
+function matColSums(mat: any): number[] {
+  const { rows, cols } = mat;
+  const data = mat.data as Uint8Array;
+  const sums = new Array<number>(cols).fill(0);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sums[c] += data[r * cols + c];
+  return sums;
 }
 
-function dedupeRects(rects: Rect[], distance = 12) {
-  const kept: Rect[] = [];
+function matRowSums(mat: any): number[] {
+  const { rows, cols } = mat;
+  const data = mat.data as Uint8Array;
+  const sums = new Array<number>(rows).fill(0);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sums[r] += data[r * cols + c];
+  return sums;
+}
 
-  for (const rect of rects) {
-    const centerX = rect.x + rect.width / 2;
-    const centerY = rect.y + rect.height / 2;
+function findPeaks(projection: number[], thresholdRatio = 0.5): number[] {
+  const threshold = Math.max(...projection) * thresholdRatio;
+  return projection.reduce<number[]>((acc, v, i) => { if (v > threshold) acc.push(i); return acc; }, []);
+}
 
-    const duplicate = kept.some((item) => {
-      const itemCenterX = item.x + item.width / 2;
-      const itemCenterY = item.y + item.height / 2;
-      return (
-        Math.abs(centerX - itemCenterX) <= distance &&
-        Math.abs(centerY - itemCenterY) <= distance
-      );
-    });
+function groupPeaks(peaks: number[], minGap = 5): number[] {
+  if (peaks.length === 0) return [];
+  const groups: number[] = [];
+  let current = [peaks[0]];
+  for (const p of peaks.slice(1)) {
+    if (p - current[current.length - 1] <= minGap) current.push(p);
+    else { groups.push(Math.floor(current.reduce((a, b) => a + b, 0) / current.length)); current = [p]; }
+  }
+  groups.push(Math.floor(current.reduce((a, b) => a + b, 0) / current.length));
+  return groups;
+}
 
-    if (!duplicate) {
-      kept.push(rect);
+function centersToBounds(centers: number[], maxVal: number): number[] {
+  if (centers.length < 2) return [0, maxVal];
+  const bounds = [Math.max(0, centers[0] - Math.floor((centers[1] - centers[0]) / 2))];
+  for (let i = 0; i < centers.length - 1; i++) bounds.push(Math.floor((centers[i] + centers[i + 1]) / 2));
+  bounds.push(Math.min(maxVal, centers[centers.length - 1] + Math.floor((centers[centers.length - 1] - centers[centers.length - 2]) / 2)));
+  return bounds;
+}
+
+// Trim rows/cols where Canny edge density exceeds 2× the median — removes frame borders.
+function trimEdgeNoise(cv: any, source: any, rect: Rect, maxInset = 20): Rect {
+  const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
+  const gray = new cv.Mat();
+  const edges = new cv.Mat();
+  try {
+    cv.cvtColor(crop, gray, cv.COLOR_RGBA2GRAY);
+    cv.Canny(gray, edges, 50, 150);
+    const { rows, cols } = edges;
+    const rowSums = matRowSums(edges);
+    const colSums = matColSums(edges);
+    const rowMedian = [...rowSums].sort((a, b) => a - b)[Math.floor(rows / 2)];
+    const colMedian = [...colSums].sort((a, b) => a - b)[Math.floor(cols / 2)];
+    const rowThreshold = rowMedian * 2;
+    const colThreshold = colMedian * 2;
+    let top = 0;       while (top < maxInset          && rowSums[top]        > rowThreshold) top++;
+    let bottom = rows; while (bottom > rows - maxInset && rowSums[bottom - 1] > rowThreshold) bottom--;
+    let left = 0;      while (left < maxInset          && colSums[left]       > colThreshold) left++;
+    let right = cols;  while (right > cols - maxInset  && colSums[right - 1]  > colThreshold) right--;
+    return integerRect({ x: rect.x + left, y: rect.y + top, width: right - left, height: bottom - top });
+  } finally {
+    safeDelete(crop, gray, edges);
+  }
+}
+
+// Gaussian blur → Canny → 5-iteration dilation; caller must delete the returned Mat.
+function preprocessEdgesForGrid(cv: any, source: any, rect: Rect): any {
+  const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
+  const gray = new cv.Mat();
+  const blur = new cv.Mat();
+  const edges = new cv.Mat();
+  const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+  const dilated = new cv.Mat();
+  try {
+    cv.cvtColor(crop, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0);
+    cv.Canny(blur, edges, 50, 150);
+    cv.dilate(edges, dilated, kernel, new cv.Point(-1, -1), 5);
+    safeDelete(crop, gray, blur, edges, kernel);
+    return dilated;
+  } catch (error) {
+    safeDelete(crop, gray, blur, edges, kernel, dilated);
+    throw error;
+  }
+}
+
+// Scan colSums for the first wide (≥15 col) near-zero valley past the left 20% — the gap
+// between hex-code cells and daemon descriptions.
+function findSequenceContentWidth(colSums: number[], totalWidth: number): number {
+  const valleyThreshold = Math.max(...colSums) * 0.05;
+  let gapStart: number | null = null;
+  for (let x = Math.floor(totalWidth / 5); x < totalWidth; x++) {
+    if (colSums[x] <= valleyThreshold) {
+      if (gapStart === null) gapStart = x;
+      else if (x - gapStart >= 15) return gapStart;
+    } else {
+      gapStart = null;
     }
   }
-
-  return kept;
+  return totalWidth;
 }
 
 function buildEdgeMask(cv: any, source: any): any {
@@ -230,26 +269,6 @@ function estimateBufferRect(panels: PanelRects, width: number) {
   });
 }
 
-function clusterByAxis(values: TokenCandidate[], axis: "centerX" | "centerY", tolerance: number) {
-  const sorted = [...values].sort((left, right) => left[axis] - right[axis]);
-  const groups: GroupedRow[] = [];
-
-  for (const item of sorted) {
-    const last = groups[groups.length - 1];
-
-    if (!last || Math.abs(item[axis] - last.center) > tolerance) {
-      groups.push({ center: item[axis], items: [item] });
-      continue;
-    }
-
-    last.items.push(item);
-    last.center =
-      last.items.reduce((total, candidate) => total + candidate[axis], 0) / last.items.length;
-  }
-
-  return groups;
-}
-
 function buildTextMask(cv: any, source: any) {
   const rgb = new cv.Mat();
   const hsv = new cv.Mat();
@@ -279,60 +298,6 @@ function buildTextMask(cv: any, source: any) {
   }
 }
 
-function extractTokenCandidates(cv: any, source: any, rect: Rect, kind: "matrix" | "sequence") {
-  const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
-  const textMask = buildTextMask(cv, crop);
-  const merged = new cv.Mat();
-  const contours = new cv.MatVector();
-  const hierarchy = new cv.Mat();
-
-  const mergeWidth = Math.max(Math.round(rect.width / (kind === "matrix" ? 55 : 34)), 4);
-  const mergeHeight = Math.max(Math.round(rect.height / 110), 2);
-  const mergeKernel = cv.Mat.ones(mergeHeight, mergeWidth, cv.CV_8U);
-  const minArea = (rect.width * rect.height) / (kind === "matrix" ? 3000 : 2200);
-  const maxWidth = rect.width / (kind === "matrix" ? 3.4 : 1.6);
-  const tokenRects: TokenCandidate[] = [];
-
-  try {
-    cv.dilate(textMask, merged, mergeKernel);
-    cv.findContours(merged, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-    for (let index = 0; index < contours.size(); index += 1) {
-      const contour = contours.get(index);
-      try {
-        const candidateRect = cv.boundingRect(contour);
-        const area = candidateRect.width * candidateRect.height;
-
-        if (
-          area < minArea ||
-          candidateRect.width < mergeWidth ||
-          candidateRect.height < mergeHeight * 3 ||
-          candidateRect.width > maxWidth
-        ) {
-          continue;
-        }
-
-        tokenRects.push({
-          rect: {
-            x: rect.x + candidateRect.x,
-            y: rect.y + candidateRect.y,
-            width: candidateRect.width,
-            height: candidateRect.height,
-          },
-          centerX: rect.x + candidateRect.x + candidateRect.width / 2,
-          centerY: rect.y + candidateRect.y + candidateRect.height / 2,
-        });
-      } finally {
-        contour.delete();
-      }
-    }
-  } finally {
-    safeDelete(crop, textMask, merged, contours, hierarchy, mergeKernel);
-  }
-
-  return tokenRects.sort((left, right) => left.centerY - right.centerY || left.centerX - right.centerX);
-}
-
 function absoluteBufferSlots(rects: Rect[], panelRect: Rect) {
   return rects.map((rect) => integerRect({
     x: panelRect.x + rect.x,
@@ -344,48 +309,48 @@ function absoluteBufferSlots(rects: Rect[], panelRect: Rect) {
 
 function detectBufferSlots(cv: any, source: any, rect: Rect) {
   const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
+  const { rows: bufH, cols: bufW } = crop;
+  const bufArea = bufH * bufW;
   const gray = new cv.Mat();
   const edges = new cv.Mat();
   const dilated = new cv.Mat();
+  const processed = new cv.Mat();
   const contours = new cv.MatVector();
   const hierarchy = new cv.Mat();
-  const kernel = cv.Mat.ones(2, 2, cv.CV_8U);
-  const slots: Rect[] = [];
+  const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
 
   try {
     cv.cvtColor(crop, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-    cv.Canny(gray, edges, 60, 160);
-    cv.dilate(edges, dilated, kernel);
-    cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    cv.Canny(gray, edges, 30, 150);
+    cv.dilate(edges, dilated, kernel, new cv.Point(-1, -1), 3);
+    cv.morphologyEx(dilated, processed, cv.MORPH_CLOSE, kernel, new cv.Point(-1, -1), 2);
+    cv.findContours(processed, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
+    const boxes: Rect[] = [];
     for (let index = 0; index < contours.size(); index += 1) {
       const contour = contours.get(index);
       try {
-        const candidateRect = cv.boundingRect(contour);
-        const aspect = candidateRect.width / Math.max(candidateRect.height, 1);
-
-        if (
-          candidateRect.width < rect.width * 0.04 ||
-          candidateRect.width > rect.width * 0.35 ||
-          candidateRect.height < rect.height * 0.25 ||
-          candidateRect.height > rect.height * 0.93 ||
-          aspect < 0.55 ||
-          aspect > 1.65
-        ) {
-          continue;
-        }
-
-        slots.push(toRect(candidateRect));
+        const r = cv.boundingRect(contour);
+        const area = r.width * r.height;
+        const aspect = r.height > 0 ? r.width / r.height : 0;
+        if (aspect > 0.5 && aspect < 2.5 && area / bufArea > 0.005 && area / bufArea < 0.5)
+          boxes.push(toRect(r));
       } finally {
         contour.delete();
       }
     }
-  } finally {
-    safeDelete(crop, gray, edges, dilated, contours, hierarchy, kernel);
-  }
 
-  return absoluteBufferSlots(dedupeRects(slots, 10).sort((left, right) => left.x - right.x), rect);
+    boxes.sort((a, b) => a.x - b.x);
+    const merged: Rect[] = [];
+    for (const box of boxes) {
+      const prev = merged[merged.length - 1];
+      if (!prev || box.x > prev.x + prev.width * 0.5) merged.push(box);
+    }
+
+    return absoluteBufferSlots(merged, rect);
+  } finally {
+    safeDelete(crop, gray, edges, dilated, processed, contours, hierarchy, kernel);
+  }
 }
 
 function cropForOcr(cv: any, source: any, rect: Rect) {
@@ -427,40 +392,6 @@ function cropForOcr(cv: any, source: any, rect: Rect) {
   }
 }
 
-async function recognizeTokens(cv: any, source: any, candidates: TokenCandidate[]) {
-  const results: Array<
-    Pick<DebugToken, "rect" | "center" | "rawText" | "value" | "confidence">
-  > = [];
-
-  for (const candidate of candidates) {
-    const canvas = cropForOcr(cv, source, candidate.rect);
-    const token = await recognizeCodeToken(canvas);
-
-    results.push({
-      rect: candidate.rect,
-      center: {
-        x: candidate.rect.x + candidate.rect.width / 2,
-        y: candidate.rect.y + candidate.rect.height / 2,
-      },
-      rawText: token.rawText,
-      value: token.value,
-      confidence: token.confidence,
-    });
-  }
-
-  return results;
-}
-
-function rowsFromCandidates(candidates: TokenCandidate[]) {
-  const tolerance = Math.max(median(candidates.map((item) => item.rect.height)) * 0.85, 10);
-  return clusterByAxis(candidates, "centerY", tolerance).sort((left, right) => left.center - right.center);
-}
-
-function columnsFromCandidates(candidates: TokenCandidate[]) {
-  const tolerance = Math.max(median(candidates.map((item) => item.rect.width)) * 1.2, 12);
-  return clusterByAxis(candidates, "centerX", tolerance).sort((left, right) => left.center - right.center);
-}
-
 function emptyMatrix(rows: number, cols: number) {
   return Array.from({ length: rows }, () => Array.from({ length: cols }, () => "" as CodeValue));
 }
@@ -470,49 +401,54 @@ async function extractMatrix(
   source: any,
   panelRect: Rect,
 ): Promise<{ matrix: CodeValue[][]; debugTokens: DebugToken[]; warnings: string[] }> {
-  const contentRect = insetRect(panelRect, panelPadding.matrix);
-  const candidates = extractTokenCandidates(cv, source, contentRect, "matrix");
   const warnings: string[] = [];
+  const contentRect = trimEdgeNoise(cv, source, panelRect);
+  const edgeMat = preprocessEdgesForGrid(cv, source, contentRect);
 
-  if (candidates.length === 0) {
-    warnings.push("Could not detect any code matrix tokens.");
+  const colCenters = groupPeaks(findPeaks(matColSums(edgeMat)));
+  const rowCenters = groupPeaks(findPeaks(matRowSums(edgeMat)));
+  const { rows: edgeH, cols: edgeW } = edgeMat;
+  safeDelete(edgeMat);
+
+  console.log(`[matrix] grid: ${rowCenters.length}r × ${colCenters.length}c`,
+    'rows:', rowCenters.join(','), 'cols:', colCenters.join(','));
+
+  if (colCenters.length === 0 || rowCenters.length === 0) {
+    warnings.push("Could not detect grid in code matrix.");
     return { matrix: createEmptyPuzzle(6).matrix, debugTokens: [], warnings };
   }
 
-  const rowGroups = rowsFromCandidates(candidates);
-  const columnGroups = columnsFromCandidates(candidates);
-  const matrix = emptyMatrix(rowGroups.length, columnGroups.length);
+  const colBounds = centersToBounds(colCenters, edgeW);
+  const rowBounds = centersToBounds(rowCenters, edgeH);
+  const nRows = rowBounds.length - 1;
+  const nCols = colBounds.length - 1;
+  const matrix = emptyMatrix(nRows, nCols);
   const debugTokens: DebugToken[] = [];
 
-  const recognized = await recognizeTokens(cv, source, candidates);
-
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index];
-    const recognizedToken = recognized[index];
-    const row = rowGroups.findIndex((group) => group.items.includes(candidate));
-    const col = columnGroups.findIndex((group) => group.items.includes(candidate));
-
-    if (row < 0 || col < 0) {
-      continue;
+  for (let r = 0; r < nRows; r++) {
+    for (let c = 0; c < nCols; c++) {
+      const cellRect = integerRect({
+        x: contentRect.x + colBounds[c],
+        y: contentRect.y + rowBounds[r],
+        width: colBounds[c + 1] - colBounds[c],
+        height: rowBounds[r + 1] - rowBounds[r],
+      });
+      const canvas = cropForOcr(cv, source, cellRect);
+      const token = await recognizeCodeToken(canvas);
+      matrix[r][c] = token.value;
+      debugTokens.push({
+        row: r,
+        col: c,
+        rect: cellRect,
+        center: { x: cellRect.x + cellRect.width / 2, y: cellRect.y + cellRect.height / 2 },
+        rawText: token.rawText,
+        value: token.value,
+        confidence: token.confidence,
+      });
     }
-
-    matrix[row][col] = recognizedToken.value;
-    debugTokens.push({
-      row,
-      col,
-      rect: candidate.rect,
-      center: recognizedToken.center,
-      rawText: recognizedToken.rawText,
-      value: recognizedToken.value,
-      confidence: recognizedToken.confidence,
-    });
   }
 
-  console.log(`[matrix] candidates=${candidates.length} rows=${rowGroups.length} cols=${columnGroups.length}`,
-    'rowCenters:', rowGroups.map(function(g){return Math.round(g.center)}).join(','),
-    'colCenters:', columnGroups.map(function(g){return Math.round(g.center)}).join(','));
-
-  if (rowGroups.length < 4 || rowGroups.length > 8 || columnGroups.length < 4 || columnGroups.length > 8) {
+  if (nRows < 4 || nRows > 8 || nCols < 4 || nCols > 8) {
     warnings.push("Matrix grid size looks unusual. Review the extracted cells before solving.");
   }
 
@@ -524,52 +460,70 @@ async function extractSequences(
   source: any,
   panelRect: Rect,
 ): Promise<{ sequences: CodeValue[][]; debugTokens: DebugToken[]; warnings: string[] }> {
-  const contentRect = insetRect(panelRect, panelPadding.sequence);
-  const candidates = extractTokenCandidates(cv, source, contentRect, "sequence");
   const warnings: string[] = [];
+  const trimmedRect = trimEdgeNoise(cv, source, panelRect);
+  const edgeFull = preprocessEdgesForGrid(cv, source, trimmedRect);
 
-  if (candidates.length === 0) {
-    warnings.push("Could not detect any sequence tokens.");
+  // Clip right side to exclude daemon description column.
+  const contentWidth = findSequenceContentWidth(matColSums(edgeFull), edgeFull.cols);
+  const edgeView = edgeFull.roi(new cv.Rect(0, 0, contentWidth, edgeFull.rows));
+  const edgeContent = new cv.Mat();
+  edgeView.copyTo(edgeContent);
+  safeDelete(edgeView, edgeFull);
+
+  const contentRect: Rect = integerRect({
+    x: trimmedRect.x,
+    y: trimmedRect.y,
+    width: contentWidth,
+    height: trimmedRect.height,
+  });
+
+  const rowCenters = groupPeaks(findPeaks(matRowSums(edgeContent)));
+  console.log(`[sequence] rows: ${rowCenters.length}`, rowCenters.join(','));
+
+  if (rowCenters.length === 0) {
+    safeDelete(edgeContent);
+    warnings.push("Could not detect any sequence rows.");
     return { sequences: createEmptyPuzzle(6).sequences, debugTokens: [], warnings };
   }
 
-  const rowGroups = rowsFromCandidates(candidates);
-  const recognized = await recognizeTokens(cv, source, candidates);
-  const sequences: CodeValue[][] = rowGroups.map(() => []);
+  const rowBounds = centersToBounds(rowCenters, edgeContent.rows);
+  const nRows = rowBounds.length - 1;
+  const sequences: CodeValue[][] = Array.from({ length: nRows }, () => []);
   const debugTokens: DebugToken[] = [];
-  const tokensByRow = rowGroups.map(() => [] as Array<{
-    candidate: TokenCandidate;
-    token: Pick<DebugToken, "center" | "rawText" | "value" | "confidence">;
-  }>);
 
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index];
-    const recognizedToken = recognized[index];
-    const row = rowGroups.findIndex((group) => group.items.includes(candidate));
+  for (let r = 0; r < nRows; r++) {
+    // Column projection on this row's slice to find individual token boundaries.
+    const rowSlice = edgeContent.roi(new cv.Rect(0, rowBounds[r], contentWidth, rowBounds[r + 1] - rowBounds[r]));
+    const colCenters = groupPeaks(findPeaks(matColSums(rowSlice)));
+    rowSlice.delete();
 
-    if (row < 0) {
-      continue;
+    if (colCenters.length === 0) continue;
+    const colBounds = centersToBounds(colCenters, contentWidth);
+
+    for (let c = 0; c < colBounds.length - 1; c++) {
+      const cellRect = integerRect({
+        x: contentRect.x + colBounds[c],
+        y: contentRect.y + rowBounds[r],
+        width: colBounds[c + 1] - colBounds[c],
+        height: rowBounds[r + 1] - rowBounds[r],
+      });
+      const canvas = cropForOcr(cv, source, cellRect);
+      const token = await recognizeCodeToken(canvas);
+      sequences[r].push(token.value);
+      debugTokens.push({
+        row: r,
+        col: c,
+        rect: cellRect,
+        center: { x: cellRect.x + cellRect.width / 2, y: cellRect.y + cellRect.height / 2 },
+        rawText: token.rawText,
+        value: token.value,
+        confidence: token.confidence,
+      });
     }
-
-    tokensByRow[row].push({ candidate, token: recognizedToken });
   }
 
-  tokensByRow.forEach((rowEntries, rowIndex) => {
-    rowEntries.sort((left, right) => left.candidate.centerX - right.candidate.centerX);
-
-    rowEntries.forEach((entry, colIndex) => {
-      sequences[rowIndex].push(entry.token.value);
-      debugTokens.push({
-        row: rowIndex,
-        col: colIndex,
-        rect: entry.candidate.rect,
-        center: entry.token.center,
-        rawText: entry.token.rawText,
-        value: entry.token.value,
-        confidence: entry.token.confidence,
-      });
-    });
-  });
+  safeDelete(edgeContent);
 
   if (sequences.some((row) => row.length === 0)) {
     warnings.push("One or more sequences looked incomplete.");
