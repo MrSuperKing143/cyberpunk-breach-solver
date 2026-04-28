@@ -1,0 +1,147 @@
+@use "./variables" as *;
+
+.panel {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(9, 14, 18, 0.86);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.header h2 {
+  margin: 6px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+}
+
+.analysisBadge {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.analysisBadge strong {
+  color: var(--text);
+}
+
+.metricRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.metric {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.metric span,
+.codeString span {
+  display: block;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+}
+
+.metric strong,
+.codeString strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.16rem;
+  letter-spacing: 0.06em;
+}
+
+.codeString {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(178, 255, 89, 0.12), transparent 30%),
+    rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(178, 255, 89, 0.22);
+}
+
+.section {
+  margin-top: 18px;
+}
+
+.section h3 {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sequenceList,
+.pathList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sequenceList li,
+.pathList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sequenceMatched {
+  border: 1px solid rgba(178, 255, 89, 0.28);
+}
+
+.sequenceMissed {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pathList li span {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.pathList li small {
+  color: var(--muted);
+}
+
+.emptyState {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+}
+
+@media (max-width: $mobile) {
+  .panel {
+    padding: 18px;
+  }
+
+  .metricRow {
+    grid-template-columns: 1fr;
+  }
+}

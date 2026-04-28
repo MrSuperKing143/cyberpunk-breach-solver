@@ -1,0 +1,176 @@
+@use "./variables" as *;
+
+.panel {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(9, 14, 18, 0.86);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.header h2 {
+  margin: 6px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+}
+
+.restoreButton,
+.inlineButton,
+.removeRowButton,
+.removeTokenButton {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.restoreButton,
+.inlineButton,
+.removeRowButton {
+  padding: 10px 14px;
+}
+
+.removeTokenButton {
+  padding: 8px 12px;
+}
+
+.metaRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.74rem;
+}
+
+.field input,
+.field select,
+.codeSelect {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(3, 8, 10, 0.88);
+  color: var(--text);
+}
+
+.confidenceBadge {
+  align-self: end;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(178, 255, 89, 0.08);
+  border: 1px solid rgba(178, 255, 89, 0.22);
+  color: var(--muted);
+}
+
+.confidenceBadge strong {
+  color: var(--accent-strong);
+}
+
+.section {
+  margin-top: 20px;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.matrixGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.codeSelect {
+  min-width: 0;
+  text-align: center;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lowConfidence {
+  border-color: rgba(255, 211, 107, 0.6);
+  box-shadow: 0 0 0 1px rgba(255, 211, 107, 0.28);
+}
+
+.sequenceList {
+  display: grid;
+  gap: 14px;
+}
+
+.sequenceRow {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sequenceLabel {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.76rem;
+}
+
+.sequenceTokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sequenceToken {
+  display: grid;
+  gap: 8px;
+}
+
+.sequenceActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: $mobile) {
+  .panel {
+    padding: 18px;
+  }
+
+  .metaRow {
+    grid-template-columns: 1fr;
+  }
+}

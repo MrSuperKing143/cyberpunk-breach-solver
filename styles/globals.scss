@@ -1,0 +1,97 @@
+@use "./variables" as *;
+
+@font-face {
+  font-family: "Rajdhani";
+  src:
+    url("/fonts/subset-Rajdhani-Bold.woff2") format("woff2"),
+    url("/fonts/subset-Rajdhani-Bold.woff") format("woff"),
+    url("/fonts/subset-Rajdhani-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rajdhani";
+  src:
+    url("/fonts/subset-Rajdhani-Medium.woff2") format("woff2"),
+    url("/fonts/subset-Rajdhani-Medium.woff") format("woff"),
+    url("/fonts/subset-Rajdhani-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rajdhani";
+  src:
+    url("/fonts/subset-Rajdhani-Regular.woff2") format("woff2"),
+    url("/fonts/subset-Rajdhani-Regular.woff") format("woff"),
+    url("/fonts/subset-Rajdhani-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #{$bg};
+  --bg-soft: #{$bg-soft};
+  --panel: #{$panel};
+  --panel-strong: #{$panel-strong};
+  --line: #{$line};
+  --line-strong: #{$line-strong};
+  --text: #{$text};
+  --muted: #{$muted};
+  --accent: #{$accent};
+  --accent-strong: #{$accent-strong};
+  --cyan: #{$cyan};
+  --danger: #{$danger};
+  --warning: #{$warning};
+  --shadow: #{$shadow};
+  --radius-xl: #{$radius-xl};
+  --radius-lg: #{$radius-lg};
+  --radius-md: #{$radius-md};
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top, rgba(178, 255, 89, 0.14), transparent 42%),
+    radial-gradient(circle at bottom left, rgba(91, 231, 255, 0.12), transparent 25%),
+    linear-gradient(180deg, #0b1117 0%, #05080d 100%);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--text);
+  font-family: "Rajdhani", Arial, sans-serif;
+  background:
+    linear-gradient(120deg, rgba(178, 255, 89, 0.05), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 22%),
+    var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
