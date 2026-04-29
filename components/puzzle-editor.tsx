@@ -185,7 +185,7 @@ export function PuzzleEditor({
   const pathSegs: Array<{ x1: number; y1: number; x2: number; y2: number; last: boolean }> = [];
   if (solverResult) {
     const pts = solverResult.path.slice(0, revealed);
-    const INSET = 0.36;
+    const INSET = 0.31;
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i], b = pts[i + 1];
       const ax = a.col + 0.5, ay = a.row + 0.5;
@@ -243,7 +243,7 @@ export function PuzzleEditor({
         <div className={styles.matrixWrap}>
           <div
             className={styles.matrixGrid}
-            style={{ gridTemplateColumns: `repeat(${N}, 1fr)` }}
+            style={{ gridTemplateColumns: `repeat(${N}, var(--matrix-cell-size))` }}
           >
             {puzzle.matrix.map((row, rowIdx) =>
               row.map((value, colIdx) => {
@@ -313,9 +313,8 @@ export function PuzzleEditor({
                   x2={`${(seg.x2 * 100) / N}%`}
                   y2={`${(seg.y2 * 100) / N}%`}
                   stroke="#5ee9f2"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  markerEnd={seg.last ? "url(#arrowCyan)" : undefined}
+                  strokeWidth={5}
+                  strokeLinecap="square"
                 />
               ))}
             </svg>

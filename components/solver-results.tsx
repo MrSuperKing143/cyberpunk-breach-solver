@@ -78,29 +78,23 @@ export function SolverResults({
         </div>
       </div>
 
-      {/* Metrics strip — shown after solve completes */}
-      {solverResult && revealed === solverResult.path.length && (
-        <div className={styles.metricsRow}>
-          <div className={styles.metric}>
-            <span className={styles.metricLabel}>SEQUENCES</span>
-            <span className={styles.metricValue}>
-              {solverResult.matchedSequences.length}
-            </span>
-          </div>
-          <div className={styles.metric}>
-            <span className={styles.metricLabel}>BUFFER USED</span>
-            <span className={styles.metricValue}>
-              {solverResult.path.length}/{effectiveSize}
-            </span>
-          </div>
-          <div className={styles.metric}>
-            <span className={styles.metricLabel}>PATHS</span>
-            <span className={styles.metricValue}>
-              {solverResult.exploredPaths.toLocaleString()}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Metrics strip */}
+      <div className={styles.metricsRow}>
+        {(["SEQUENCES", "BUFFER USED", "PATHS"] as const).map((label) => {
+          const value = solverResult
+            ? label === "SEQUENCES" ? String(solverResult.matchedSequences.length)
+            : label === "BUFFER USED" ? `${solverResult.path.length}/${effectiveSize}`
+            : solverResult.exploredPaths.toLocaleString()
+            : "—";
+          const pending = !solverResult;
+          return (
+            <div className={styles.metric} key={label}>
+              <span className={styles.metricLabel}>{label}</span>
+              <span className={pending ? styles.metricPending : styles.metricValue}>{value}</span>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

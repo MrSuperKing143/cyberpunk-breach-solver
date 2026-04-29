@@ -8,7 +8,7 @@ $line-strong:  #404040;
 $text:         #ffffff;
 $muted:        #a0a0a0;
 $ink-faint:    #5a5a5a;
-$accent:   oklch(86% 0.22 130);
+$accent:   #d0ed57;
 $cyan:     #5ee9f2;
 $danger:   oklch(70% 0.18 25);
 $warning:  oklch(78% 0.18 75);
@@ -16,3 +16,5 @@ $warning:  oklch(78% 0.18 75);
 $desktop: 1180px;
 $tablet:  900px;
 $mobile:  640px;
+
+$matrix-cell-size: 75px;

@@ -74,12 +74,8 @@
     #{$line} 6px,
     #{$line} 7px
   );
-  opacity: 1;
+  opacity: 0.25;
   transition: opacity 0.2s;
-
-  &.dimmed {
-    opacity: 0.25;
-  }
 }
 
 .previewImage {
@@ -361,21 +357,19 @@
   fill: none;
   stroke: $cyan;
   stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: butt;
+  stroke-linejoin: butt;
   vector-effect: non-scaling-stroke;
 }
 
-.pathDot {
-  fill: rgba(94, 233, 242, 0.28);
+.pathBox {
+  fill: rgba(94, 233, 242, 0.18);
   stroke: $cyan;
   stroke-width: 2.5;
   vector-effect: non-scaling-stroke;
 }
 
-.pathLabel {
-  fill: white;
-  font-size: 20px;
-  font-weight: 700;
-  text-anchor: middle;
+.pathArrow {
+  fill: $cyan;
+  stroke: none;
 }

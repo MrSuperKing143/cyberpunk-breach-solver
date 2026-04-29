@@ -156,14 +156,13 @@
 // ── Workspace ────────────────────────────────────────────────────────────────
 .workspace {
   display: grid;
-  grid-template-columns: 1fr 0.9fr;
+  grid-template-columns: 1fr 0.7fr;
   flex: 1;
   min-height: 0;
 }
 
 .visualColumn {
   padding: 18px;
-  border-right: 1px solid $line;
   min-width: 0;
 }
 

@@ -28,6 +28,20 @@ function tokenKey(row: number, col: number) {
   return `${row}:${col}`;
 }
 
+function boxBorderPoint(
+  cx: number, cy: number,
+  hw: number, hh: number,
+  tx: number, ty: number,
+): { x: number; y: number } {
+  const dx = tx - cx;
+  const dy = ty - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const scaleX = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const scaleY = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const scale = Math.min(scaleX, scaleY);
+  return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
 export function ImageWorkbench({
   analysis,
   onFileSelected,
@@ -46,11 +60,11 @@ export function ImageWorkbench({
   const pathPoints = useMemo(() => {
     if (!analysis || !solverResult) return [];
     const matrixTokens = new Map(
-      analysis.debug.matrixTokens.map((t) => [tokenKey(t.row, t.col), t.center]),
+      analysis.debug.matrixTokens.map((t) => [tokenKey(t.row, t.col), t]),
     );
     return solverResult.path
       .map((step) => matrixTokens.get(tokenKey(step.row, step.col)))
-      .filter((v): v is { x: number; y: number } => Boolean(v));
+      .filter((v): v is NonNullable<typeof v> => Boolean(v));
   }, [analysis, solverResult]);
 
   const handleFiles = (files: FileList | null) => {
@@ -193,7 +207,7 @@ export function ImageWorkbench({
         />
 
         {/* Hatch background */}
-        <div className={`${styles.previewHatch} ${preview ? styles.dimmed : ""}`} />
+        <div className={styles.previewHatch} />
 
         {preview ? (
           <>
@@ -254,18 +268,52 @@ export function ImageWorkbench({
                     y={slot.y}
                   />
                 ))}
-              {pathPoints.length > 1 && (
-                <polyline
-                  className={styles.pathLine}
-                  points={pathPoints.map((p) => `${p.x},${p.y}`).join(" ")}
-                />
-              )}
-              {pathPoints.map((p, i) => (
-                <g key={`pt-${i}`}>
-                  <circle className={styles.pathDot} cx={p.x} cy={p.y} r={18} />
-                  <text className={styles.pathLabel} x={p.x} y={p.y + 5}>{i + 1}</text>
-                </g>
-              ))}
+              {pathPoints.length > 1 && pathPoints.slice(0, -1).map((from, i) => {
+                const to = pathPoints[i + 1];
+                const start = boxBorderPoint(
+                  from.center.x, from.center.y,
+                  from.rect.width * 0.35, from.rect.height * 0.35,
+                  to.center.x, to.center.y,
+                );
+                const end = boxBorderPoint(
+                  to.center.x, to.center.y,
+                  to.rect.width * 0.35, to.rect.height * 0.35,
+                  from.center.x, from.center.y,
+                );
+                return (
+                  <line
+                    className={styles.pathLine}
+                    key={`line-${i}`}
+                    x1={start.x}
+                    y1={start.y}
+                    x2={end.x}
+                    y2={end.y}
+                  />
+                );
+              })}
+              {pathPoints.map((p, i) => {
+                const cx = p.rect.x + p.rect.width * 0.5;
+                const topY = p.rect.y + p.rect.height * 0.15;
+                const arrowHW = p.rect.width * 0.14;
+                const arrowH = p.rect.height * 0.16;
+                return (
+                  <g key={`box-${i}`}>
+                    {i === 0 && (
+                      <polygon
+                        className={styles.pathArrow}
+                        points={`${cx},${topY} ${cx - arrowHW},${topY - arrowH} ${cx + arrowHW},${topY - arrowH}`}
+                      />
+                    )}
+                    <rect
+                      className={styles.pathBox}
+                      height={p.rect.height * 0.7}
+                      width={p.rect.width * 0.7}
+                      x={p.rect.x + p.rect.width * 0.15}
+                      y={topY}
+                    />
+                  </g>
+                );
+              })}
             </svg>
           </>
         ) : (
