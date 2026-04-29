@@ -42,22 +42,19 @@ export function BreachProtocolApp() {
     createEmptyPuzzle(6),
   );
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
-  const [status, setStatus] = useState(
-    "Load a screenshot or choose a demo sample to begin.",
-  );
+  const [status, setStatus] = useState("READY");
   const [error, setError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [busyAction, setBusyAction] = useState<"analyze" | "solve" | null>(
-    null,
-  );
+  const [busyAction, setBusyAction] = useState<"analyze" | "solve" | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [revealed, setRevealed] = useState(0);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
-      if (uploadUrlRef.current) {
-        URL.revokeObjectURL(uploadUrlRef.current);
-      }
+      if (uploadUrlRef.current) URL.revokeObjectURL(uploadUrlRef.current);
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     };
   }, []);
 
@@ -67,16 +64,27 @@ export function BreachProtocolApp() {
     [editablePuzzle],
   );
 
+  const solving = busyAction === "solve";
+  const solved = !solving && solverResult !== null && revealed === solverResult.path.length;
+
+  function animateReveal(path: SolverResult["path"], interval = 180) {
+    let i = 0;
+    function tick() {
+      i += 1;
+      setRevealed(i);
+      if (i < path.length) {
+        revealTimerRef.current = setTimeout(tick, interval);
+      }
+    }
+    revealTimerRef.current = setTimeout(tick, interval * 1.6);
+  }
+
   const setPreviewSource = (nextPreview: PreviewSource | null) => {
     if (uploadUrlRef.current && uploadUrlRef.current !== nextPreview?.src) {
       URL.revokeObjectURL(uploadUrlRef.current);
       uploadUrlRef.current = null;
     }
-
-    if (nextPreview?.origin === "upload") {
-      uploadUrlRef.current = nextPreview.src;
-    }
-
+    if (nextPreview?.origin === "upload") uploadUrlRef.current = nextPreview.src;
     setPreview(nextPreview);
   };
 
@@ -85,21 +93,20 @@ export function BreachProtocolApp() {
     setPreviewSource({ src: objectUrl, name: file.name, origin: "upload" });
     setAnalysis(null);
     setSolverResult(null);
+    setRevealed(0);
     setError(null);
-    setStatus(`Loaded ${file.name}. Run analysis when you're ready.`);
+    setStatus(`LOADED ${file.name.toUpperCase()}`);
   };
 
   const handleSelectSample = (sampleId: string) => {
     const sample = demoSamples.find((entry) => entry.id === sampleId);
-    if (!sample) {
-      return;
-    }
-
+    if (!sample) return;
     setPreviewSource({ src: sample.src, name: sample.label, origin: "sample" });
     setAnalysis(null);
     setSolverResult(null);
+    setRevealed(0);
     setError(null);
-    setStatus(`${sample.label} is loaded. Run analysis to extract the puzzle.`);
+    setStatus(`SAMPLE LOADED · ${sample.label.toUpperCase()}`);
   };
 
   const handleAnalyze = async () => {
@@ -107,16 +114,16 @@ export function BreachProtocolApp() {
       setError("Load a screenshot before running analysis.");
       return;
     }
-
     setBusyAction("analyze");
     setError(null);
     setSolverResult(null);
+    setRevealed(0);
 
     try {
       const result = await analyzeBreachImage({
         src: preview.src,
         name: preview.name,
-        onProgress: (message) => setStatus(message),
+        onProgress: (message) => setStatus(message.toUpperCase()),
       });
 
       startTransition(() => {
@@ -125,17 +132,14 @@ export function BreachProtocolApp() {
         setShowDebug(false);
         setStatus(
           result.warnings.length
-            ? "Analysis completed with warnings. Review the extracted puzzle before solving."
-            : "Analysis completed. Review the extracted puzzle and run the solver.",
+            ? "ANALYSIS COMPLETE · WARNINGS DETECTED"
+            : "ANALYSIS COMPLETE · READY TO SOLVE",
         );
       });
-    } catch (analysisError) {
-      const message =
-        analysisError instanceof Error
-          ? analysisError.message
-          : "The screenshot could not be analyzed.";
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "The screenshot could not be analyzed.";
       setError(message);
-      setStatus("Analysis failed. Try another crop or correct the puzzle manually.");
+      setStatus("ANALYSIS FAILED");
     } finally {
       setBusyAction(null);
     }
@@ -147,9 +151,9 @@ export function BreachProtocolApp() {
       setError(issues[0]);
       return;
     }
-
     setBusyAction("solve");
     setError(null);
+    setRevealed(0);
 
     try {
       const result = solveBreachPuzzle(editablePuzzle);
@@ -162,43 +166,47 @@ export function BreachProtocolApp() {
         setSolverResult(result);
         setStatus(
           result.matchedSequences.length > 0
-            ? `Solved. ${result.matchedSequences.length} sequence(s) can be completed within the buffer.`
-            : "Solved. No full sequence fits the current buffer, but the best partial path is shown.",
+            ? `OPTIMAL · ${result.matchedSequences.length}/${editablePuzzle.sequences.length} SEQUENCES`
+            : "NO FULL SEQUENCE · BEST PARTIAL PATH",
         );
       });
+
+      animateReveal(result.path);
     } finally {
       setBusyAction(null);
     }
   };
 
   const handleReset = () => {
+    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     setPreviewSource(null);
     setAnalysis(null);
     setEditablePuzzle(createEmptyPuzzle(6));
     setSolverResult(null);
+    setRevealed(0);
     setError(null);
     setShowDebug(false);
-    setStatus("State reset. Load a screenshot or choose a demo sample.");
+    setStatus("READY");
   };
 
-  const handleCreateManual = () => {
+  const handleBlank = () => {
+    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
     setAnalysis(null);
     setSolverResult(null);
+    setRevealed(0);
     setError(null);
     setShowDebug(false);
     setEditablePuzzle(createEmptyPuzzle(6));
-    setStatus("Manual puzzle mode is ready. Fill in the matrix, sequences, and buffer size.");
+    setStatus("MANUAL MODE · READY");
   };
 
   const handleRestoreExtracted = () => {
-    if (!analysis) {
-      return;
-    }
-
+    if (!analysis) return;
     setEditablePuzzle(analysis.puzzle);
     setSolverResult(null);
+    setRevealed(0);
     setError(null);
-    setStatus("Restored the latest extracted values.");
+    setStatus("RESTORED EXTRACTED VALUES");
   };
 
   const handleMatrixSizeChange = (size: number) => {
@@ -207,68 +215,85 @@ export function BreachProtocolApp() {
       matrix: resizeMatrix(current.matrix, size),
     }));
     setSolverResult(null);
+    setRevealed(0);
   };
 
+  const statusText =
+    busyAction === "analyze"
+      ? "ANALYZING…"
+      : busyAction === "solve"
+        ? `EVALUATING PATHS`
+        : status;
+
+  const hasNotes = warnings.length > 0 || error !== null || isPending;
+
   return (
-    <main className={styles.shell}>
-      <section className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Static Export Next.js Tool</p>
-          <h1>Cyberpunk 2077 Breach Protocol Solver</h1>
-          <p className={styles.heroText}>
-            Upload a breach screenshot, extract the buffer, matrix, and daemon
-            sequences fully in the browser, then solve the best legal path with
-            editable fallback controls when OCR needs help.
-          </p>
-        </div>
-        <div className={styles.heroStats}>
-          <div>
-            <span>Pipeline</span>
-            <strong>OpenCV.js + OCR</strong>
-          </div>
-          <div>
-            <span>Runtime</span>
-            <strong>Client-only</strong>
-          </div>
-          <div>
-            <span>Export</span>
-            <strong>Static</strong>
+    <div className={styles.shell}>
+      {/* ── Header ── */}
+      <header className={styles.header}>
+        <div className={styles.headerBrand}>
+          <div className={styles.headerLogo}>▦</div>
+          <div className={styles.headerMeta}>
+            <span className={styles.headerSub}>{"// BREACH-SOLVER · v0.4.1"}</span>
+            <span className={styles.headerTitle}>Matrix Decoder</span>
           </div>
         </div>
-      </section>
+        <div className={styles.headerStatus}>
+          <div className={styles.headerStatusItem}>
+            OCV <strong>READY</strong>
+          </div>
+        </div>
+      </header>
 
-      <section className={styles.toolbar}>
-        <div className={styles.actions}>
-          <button
-            className={styles.primaryButton}
-            disabled={!preview || busyAction !== null}
-            onClick={handleAnalyze}
-            type="button"
-          >
-            {busyAction === "analyze" ? "Analyzing..." : "Analyze Screenshot"}
-          </button>
-          <button
-            className={styles.secondaryButton}
-            disabled={!canSolve || busyAction !== null}
-            onClick={handleSolve}
-            type="button"
-          >
-            {busyAction === "solve" ? "Solving..." : "Solve Best Path"}
-          </button>
-          <button className={styles.ghostButton} onClick={handleCreateManual} type="button">
-            Blank Puzzle
-          </button>
-          <button className={styles.ghostButton} onClick={handleReset} type="button">
-            Reset
-          </button>
+      {/* ── Action Bar ── */}
+      <div className={styles.actionBar}>
+        <button
+          className={styles.actionBtn}
+          disabled={!preview || busyAction !== null}
+          onClick={handleAnalyze}
+          type="button"
+        >
+          ▸ ANALYZE
+        </button>
+        <button
+          className={`${styles.actionBtn} ${canSolve && !solving ? styles.actionBtnPrimary : ""}`}
+          disabled={!canSolve || solving}
+          onClick={solved ? handleReset : handleSolve}
+          type="button"
+        >
+          {solving ? "▸ SOLVING…" : solved ? "▸ RESET" : "▸ SOLVE"}
+        </button>
+        <button
+          className={styles.actionBtn}
+          onClick={handleBlank}
+          type="button"
+        >
+          BLANK
+        </button>
+        <button
+          className={styles.actionBtn}
+          onClick={handleReset}
+          type="button"
+        >
+          RESET
+        </button>
+        <div className={styles.actionSpacer} />
+        <div className={styles.actionStatus}>
+          <span
+            className={`${styles.statusDot} ${
+              solved
+                ? styles.statusDotSolved
+                : solving || busyAction === "analyze"
+                  ? styles.statusDotSolving
+                  : ""
+            }`}
+          />
+          <span>{statusText}</span>
         </div>
-        <div className={styles.statusArea}>
-          <span className={styles.statusLabel}>Status</span>
-          <span className={styles.statusValue}>{status}</span>
-        </div>
-      </section>
+      </div>
 
-      <section className={styles.workspace}>
+      {/* ── Workspace ── */}
+      <div className={styles.workspace}>
         <div className={styles.visualColumn}>
           <ImageWorkbench
             analysis={analysis}
@@ -283,34 +308,49 @@ export function BreachProtocolApp() {
         </div>
 
         <div className={styles.dataColumn}>
+          <SolverResults
+            bufferSize={editablePuzzle.bufferSize}
+            onBufferSizeChange={(size) => {
+              setEditablePuzzle((p) => ({ ...p, bufferSize: size }));
+              setSolverResult(null);
+              setRevealed(0);
+            }}
+            revealed={revealed}
+            solverResult={solverResult}
+          />
+
           <PuzzleEditor
             analysis={analysis}
             onChange={setEditablePuzzle}
             onMatrixSizeChange={handleMatrixSizeChange}
             onRestoreExtracted={handleRestoreExtracted}
             puzzle={editablePuzzle}
+            revealed={revealed}
+            solverResult={solverResult}
           />
 
-          <SolverResults analysis={analysis} puzzle={editablePuzzle} solverResult={solverResult} />
-
-          {(warnings.length > 0 || error || isPending) && (
+          {hasNotes && (
             <section className={styles.notesCard}>
-              <header className={styles.sectionHeader}>
-                <h2>Analysis Notes</h2>
-              </header>
+              <p className={styles.notesTitle}>Analysis Notes</p>
               {error && <p className={styles.errorText}>{error}</p>}
-              {isPending && <p className={styles.pendingText}>Updating the workspace...</p>}
+              {isPending && <p className={styles.pendingText}>Updating workspace…</p>}
               {warnings.length > 0 && (
                 <ul className={styles.warningList}>
-                  {warnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
+                  {warnings.map((w) => (
+                    <li key={w}>{w}</li>
                   ))}
                 </ul>
               )}
             </section>
           )}
         </div>
-      </section>
-    </main>
+      </div>
+
+      {/* ── Footer ── */}
+      <footer className={styles.footer}>
+        <span>SESSION 0XA47F · CLIENT-ONLY · STATIC EXPORT</span>
+        <span>BREACH-SOLVER · v0.4.1 · {statusText}</span>
+      </footer>
+    </div>
   );
 }

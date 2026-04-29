@@ -1,147 +1,158 @@
 @use "./variables" as *;
 
+// ── B.01 BUFFER panel ────────────────────────────────────────────────────────
 .panel {
-  padding: 22px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: rgba(9, 14, 18, 0.86);
+  border: 1px solid $line;
+  background: $bg-soft;
 }
 
-.header {
+.panelTitle {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  align-items: start;
-}
-
-.header h2 {
-  margin: 6px 0 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--accent-strong);
-  text-transform: uppercase;
+  align-items: center;
+  padding: 8px 14px;
+  background: $panel-strong;
+  border-bottom: 1px solid $line;
+  font-size: 11px;
+  color: $muted;
   letter-spacing: 0.16em;
-  font-size: 0.72rem;
+  text-transform: uppercase;
+  gap: 10px;
 }
 
-.analysisBadge {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--muted);
+.panelId {
+  color: var(--accent);
+  margin-right: 8px;
 }
 
-.analysisBadge strong {
-  color: var(--text);
+.panelTitleRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.metricRow {
+// Stepper (shared pattern)
+.sizePicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 1px solid $line;
+  padding-left: 10px;
+}
+
+.sizePickerLabel {
+  color: $ink-faint;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.sizePickerValue {
+  min-width: 28px;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.sizePickerBtn {
+  width: 18px;
+  height: 18px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 18px;
+  place-items: center;
+  background: $bg-soft;
+  color: $text;
+  border: 1px solid $line;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
+
+// Buffer slots grid
+.bufferWrap {
+  padding: 14px;
+}
+
+.bufferGrid {
+  display: grid;
+  gap: 4px;
+}
+
+.bufferSlot {
+  aspect-ratio: 1.3;
+  border: 1px solid $line;
+  background: $panel-strong;
+  color: $ink-faint;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.bufferSlotFilled {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: $bg;
+}
+
+.bufferSlotNum {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 8px;
+  color: $ink-faint;
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.bufferSlotNumFilled {
+  color: $bg;
+}
+
+// Empty state
+.emptyState {
+  padding: 18px;
+  color: $ink-faint;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+// Metrics row (shown after solve)
+.metricsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid $line;
 }
 
 .metric {
-  padding: 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.metric span,
-.codeString span {
-  display: block;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.metric strong,
-.codeString strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 1.16rem;
-  letter-spacing: 0.06em;
-}
-
-.codeString {
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: 18px;
-  background:
-    linear-gradient(135deg, rgba(178, 255, 89, 0.12), transparent 30%),
-    rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(178, 255, 89, 0.22);
-}
-
-.section {
-  margin-top: 18px;
-}
-
-.section h3 {
-  margin: 0 0 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.sequenceList,
-.pathList {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.sequenceList li,
-.pathList li {
+  padding: 10px 12px;
+  border-right: 1px solid $line;
+  font-size: 11px;
   display: flex;
   justify-content: space-between;
-  gap: 16px;
   align-items: center;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+
+  &:last-child {
+    border-right: none;
+  }
 }
 
-.sequenceMatched {
-  border: 1px solid rgba(178, 255, 89, 0.28);
+.metricLabel {
+  color: $muted;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.sequenceMissed {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.pathList li span {
+.metricValue {
+  color: var(--accent);
   font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.pathList li small {
-  color: var(--muted);
-}
-
-.emptyState {
-  margin-top: 18px;
-  padding: 18px;
-  border-radius: 16px;
-  border: 1px dashed rgba(255, 255, 255, 0.12);
-  color: var(--muted);
-}
-
-@media (max-width: $mobile) {
-  .panel {
-    padding: 18px;
-  }
-
-  .metricRow {
-    grid-template-columns: 1fr;
-  }
 }

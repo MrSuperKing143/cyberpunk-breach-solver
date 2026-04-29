@@ -1,99 +1,104 @@
 'use client';
 
-import type { AnalysisResult, EditablePuzzle, SolverResult } from "@/lib/types/breach";
-import { codeArrayToString, sanitizeSequences } from "@/lib/types/breach";
+import type { SolverResult } from "@/lib/types/breach";
 import styles from "@/styles/solver-results.module.scss";
 
 interface SolverResultsProps {
-  analysis: AnalysisResult | null;
-  puzzle: EditablePuzzle;
+  bufferSize: number | null;
+  onBufferSizeChange: (size: number) => void;
+  revealed: number;
   solverResult: SolverResult | null;
 }
 
+const BUFFER_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12];
+
 export function SolverResults({
-  analysis,
-  puzzle,
+  bufferSize,
+  onBufferSizeChange,
+  revealed,
   solverResult,
 }: SolverResultsProps) {
-  const sanitizedSequences = sanitizeSequences(puzzle.sequences);
+  const effectiveSize = bufferSize ?? 8;
+  const tokens = solverResult?.path.slice(0, revealed).map((s) => s.value) ?? [];
+  const sizeIdx = BUFFER_OPTIONS.indexOf(effectiveSize);
 
   return (
     <section className={styles.panel}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Solver Output</p>
-          <h2>Best Valid Path</h2>
+      {/* Title bar */}
+      <div className={styles.panelTitle}>
+        <span>
+          <span className={styles.panelId}>B.01</span>
+          BUFFER
+        </span>
+        <div className={styles.panelTitleRight}>
+          <span>{revealed} / {effectiveSize}</span>
+          <span className={styles.sizePicker}>
+            <span className={styles.sizePickerLabel}>SIZE</span>
+            <button
+              className={styles.sizePickerBtn}
+              disabled={sizeIdx <= 0}
+              onClick={() => onBufferSizeChange(BUFFER_OPTIONS[Math.max(0, sizeIdx - 1)])}
+              type="button"
+            >
+              −
+            </button>
+            <span className={styles.sizePickerValue}>{effectiveSize}</span>
+            <button
+              className={styles.sizePickerBtn}
+              disabled={sizeIdx >= BUFFER_OPTIONS.length - 1}
+              onClick={() => onBufferSizeChange(BUFFER_OPTIONS[Math.min(BUFFER_OPTIONS.length - 1, sizeIdx + 1)])}
+              type="button"
+            >
+              +
+            </button>
+          </span>
         </div>
-        {analysis && (
-          <div className={styles.analysisBadge}>
-            Extracted from <strong>{analysis.image.name ?? "screenshot"}</strong>
-          </div>
-        )}
-      </header>
+      </div>
 
-      {solverResult ? (
-        <>
-          <div className={styles.metricRow}>
-            <div className={styles.metric}>
-              <span>Sequences matched</span>
-              <strong>{solverResult.matchedSequences.length}</strong>
-            </div>
-            <div className={styles.metric}>
-              <span>Buffer used</span>
-              <strong>
-                {solverResult.path.length}
-                {puzzle.bufferSize ? ` / ${puzzle.bufferSize}` : ""}
-              </strong>
-            </div>
-            <div className={styles.metric}>
-              <span>Paths explored</span>
-              <strong>{solverResult.exploredPaths}</strong>
-            </div>
-          </div>
+      {/* Buffer slots */}
+      <div className={styles.bufferWrap}>
+        <div
+          className={styles.bufferGrid}
+          style={{ gridTemplateColumns: `repeat(${effectiveSize}, 1fr)` }}
+        >
+          {Array.from({ length: effectiveSize }).map((_, i) => {
+            const filled = i < revealed;
+            return (
+              <div
+                key={i}
+                className={`${styles.bufferSlot} ${filled ? styles.bufferSlotFilled : ""}`}
+              >
+                {filled ? tokens[i] : "··"}
+                <span className={`${styles.bufferSlotNum} ${filled ? styles.bufferSlotNumFilled : ""}`}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-          <div className={styles.codeString}>
-            <span>Final code string</span>
-            <strong>{codeArrayToString(solverResult.codeString)}</strong>
+      {/* Metrics strip — shown after solve completes */}
+      {solverResult && revealed === solverResult.path.length && (
+        <div className={styles.metricsRow}>
+          <div className={styles.metric}>
+            <span className={styles.metricLabel}>SEQUENCES</span>
+            <span className={styles.metricValue}>
+              {solverResult.matchedSequences.length}
+            </span>
           </div>
-
-          <div className={styles.section}>
-            <h3>Matched Sequences</h3>
-            <ul className={styles.sequenceList}>
-              {sanitizedSequences.map((sequence, index) => (
-                <li
-                  className={
-                    solverResult.matchedSequences.includes(index)
-                      ? styles.sequenceMatched
-                      : styles.sequenceMissed
-                  }
-                  key={`${sequence.join("-")}-${index}`}
-                >
-                  <span>{codeArrayToString(sequence)}</span>
-                  <strong>
-                    {solverResult.matchedSequences.includes(index) ? "Matched" : "Not matched"}
-                  </strong>
-                </li>
-              ))}
-            </ul>
+          <div className={styles.metric}>
+            <span className={styles.metricLabel}>BUFFER USED</span>
+            <span className={styles.metricValue}>
+              {solverResult.path.length}/{effectiveSize}
+            </span>
           </div>
-
-          <div className={styles.section}>
-            <h3>Path</h3>
-            <ol className={styles.pathList}>
-              {solverResult.path.map((step, index) => (
-                <li key={`${step.row}-${step.col}-${index}`}>
-                  <span>{step.value}</span>
-                  <small>
-                    Row {step.row + 1}, Col {step.col + 1}
-                  </small>
-                </li>
-              ))}
-            </ol>
+          <div className={styles.metric}>
+            <span className={styles.metricLabel}>PATHS</span>
+            <span className={styles.metricValue}>
+              {solverResult.exploredPaths.toLocaleString()}
+            </span>
           </div>
-        </>
-      ) : (
-        <div className={styles.emptyState}>
-          <p>Run the solver after analysis or after entering a manual puzzle.</p>
         </div>
       )}
     </section>

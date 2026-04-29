@@ -1,8 +1,17 @@
 'use client';
 
-import type { AnalysisResult, CodeValue, EditablePuzzle } from "@/lib/types/breach";
+import { useRef, useState } from "react";
+
+import type { AnalysisResult, CodeValue, EditablePuzzle, SolverResult } from "@/lib/types/breach";
 import { BREACH_CODES } from "@/lib/types/breach";
 import styles from "@/styles/puzzle-editor.module.scss";
+
+const CODES = BREACH_CODES as readonly string[];
+// Map first character → full code (each code's first char is unique)
+const FIRST_CHAR_MAP: Record<string, CodeValue> = {};
+for (const code of BREACH_CODES) {
+  FIRST_CHAR_MAP[code[0]] = code;
+}
 
 interface PuzzleEditorProps {
   analysis: AnalysisResult | null;
@@ -10,245 +19,365 @@ interface PuzzleEditorProps {
   onMatrixSizeChange: (size: number) => void;
   onRestoreExtracted: () => void;
   puzzle: EditablePuzzle;
+  revealed: number;
+  solverResult: SolverResult | null;
 }
 
 function matrixTokenKey(row: number, col: number) {
   return `${row}:${col}`;
 }
 
-function nextSequenceLength(row: CodeValue[]) {
-  return Math.min(Math.max(row.length + 1, 1), 6);
+// ── SizePicker ────────────────────────────────────────────────────────────────
+function SizePicker({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  options: number[];
+  onChange: (v: number) => void;
+}) {
+  const idx = options.indexOf(value);
+  return (
+    <span className={styles.sizePicker}>
+      <span className={styles.sizePickerLabel}>{label}</span>
+      <button
+        className={styles.sizePickerBtn}
+        disabled={idx <= 0}
+        onClick={() => onChange(options[Math.max(0, idx - 1)])}
+        type="button"
+      >
+        −
+      </button>
+      <span className={styles.sizePickerValue}>{value}</span>
+      <button
+        className={styles.sizePickerBtn}
+        disabled={idx >= options.length - 1}
+        onClick={() => onChange(options[Math.min(options.length - 1, idx + 1)])}
+        type="button"
+      >
+        +
+      </button>
+    </span>
+  );
 }
 
+// ── TokenSequenceField ────────────────────────────────────────────────────────
+// Keyboard-driven chip input: type first char of a code to append it, Backspace removes last.
+function TokenSequenceField({
+  tokens,
+  onChange,
+}: {
+  tokens: CodeValue[];
+  onChange: (next: CodeValue[]) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [focused, setFocused] = useState(false);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      if (tokens.length > 0) onChange(tokens.slice(0, -1));
+      return;
+    }
+    if (e.key === " " || e.key === "," || e.key === "Tab" || e.key === "Enter") {
+      e.preventDefault();
+      return;
+    }
+    if (e.key.length === 1) {
+      const code = FIRST_CHAR_MAP[e.key.toUpperCase()];
+      if (code) {
+        e.preventDefault();
+        onChange([...tokens, code]);
+      } else {
+        e.preventDefault();
+      }
+    }
+  };
+
+  const onPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const text = (e.clipboardData.getData("text") || "").toUpperCase();
+    const next: CodeValue[] = [];
+    let i = 0;
+    while (i < text.length) {
+      const two = text.slice(i, i + 2);
+      if (CODES.includes(two)) { next.push(two as CodeValue); i += 2; continue; }
+      const code = FIRST_CHAR_MAP[text[i]];
+      if (code) { next.push(code); i += 1; continue; }
+      i += 1;
+    }
+    if (next.length) onChange([...tokens, ...next]);
+  };
+
+  return (
+    <div
+      ref={ref}
+      tabIndex={0}
+      className={`${styles.tokenField} ${focused ? styles.focused : ""}`}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onClick={() => ref.current?.focus()}
+    >
+      {tokens.length === 0 && (
+        <span className={styles.tokenPlaceholder}>type 1·5·7·B·E·F</span>
+      )}
+      {tokens.map((t, i) => (
+        <span className={styles.tokenChip} key={i}>{t}</span>
+      ))}
+      {focused && <span className={styles.tokenCaret} />}
+    </div>
+  );
+}
+
+// ── PuzzleEditor ──────────────────────────────────────────────────────────────
 export function PuzzleEditor({
   analysis,
   onChange,
   onMatrixSizeChange,
   onRestoreExtracted,
   puzzle,
+  revealed,
+  solverResult,
 }: PuzzleEditorProps) {
   const lowConfidenceMatrix = new Set(
     analysis?.debug.matrixTokens
-      .filter((token) => token.confidence < 0.55)
-      .map((token) => matrixTokenKey(token.row, token.col)) ?? [],
+      .filter((t) => t.confidence < 0.55)
+      .map((t) => matrixTokenKey(t.row, t.col)) ?? [],
   );
 
-  const updateBufferSize = (value: number) => {
-    onChange({
-      ...puzzle,
-      bufferSize: Number.isFinite(value) && value > 0 ? value : null,
+  const N = puzzle.matrix.length;
+  const pathStepMap = new Map<string, number>();
+  if (solverResult) {
+    solverResult.path.forEach((step, idx) => {
+      pathStepMap.set(matrixTokenKey(step.row, step.col), idx);
     });
-  };
+  }
 
   const updateMatrixCell = (row: number, col: number, value: CodeValue) => {
     onChange({
       ...puzzle,
-      matrix: puzzle.matrix.map((matrixRow, rowIndex) =>
-        rowIndex === row
-          ? matrixRow.map((cellValue, colIndex) => (colIndex === col ? value : cellValue))
-          : matrixRow,
+      matrix: puzzle.matrix.map((r, ri) =>
+        ri === row ? r.map((v, ci) => (ci === col ? value : v)) : r,
       ),
     });
   };
 
-  const updateSequenceToken = (row: number, col: number, value: CodeValue) => {
+  const updateSequence = (rowIndex: number, tokens: CodeValue[]) => {
     onChange({
       ...puzzle,
-      sequences: puzzle.sequences.map((sequenceRow, rowIndex) =>
-        rowIndex === row
-          ? sequenceRow.map((tokenValue, colIndex) => (colIndex === col ? value : tokenValue))
-          : sequenceRow,
-      ),
+      sequences: puzzle.sequences.map((seq, i) => (i === rowIndex ? tokens : seq)),
     });
   };
 
-  const addSequenceRow = () => {
-    onChange({
-      ...puzzle,
-      sequences: [...puzzle.sequences, ["", ""]],
-    });
+  const seqStatus = (idx: number): "matched" | "partial" | "pending" => {
+    if (!solverResult || revealed < solverResult.path.length) return "pending";
+    if (solverResult.matchedSequences.includes(idx)) return "matched";
+    return "pending";
   };
 
-  const removeSequenceRow = (row: number) => {
-    onChange({
-      ...puzzle,
-      sequences: puzzle.sequences.filter((_, rowIndex) => rowIndex !== row),
-    });
-  };
-
-  const addSequenceToken = (row: number) => {
-    onChange({
-      ...puzzle,
-      sequences: puzzle.sequences.map((sequenceRow, rowIndex) =>
-        rowIndex === row
-          ? [
-              ...sequenceRow,
-              ...Array.from(
-                { length: nextSequenceLength(sequenceRow) - sequenceRow.length },
-                () => "" as CodeValue,
-              ),
-            ]
-          : sequenceRow,
-      ),
-    });
-  };
-
-  const removeSequenceToken = (row: number, col: number) => {
-    onChange({
-      ...puzzle,
-      sequences: puzzle.sequences.map((sequenceRow, rowIndex) =>
-        rowIndex === row
-          ? sequenceRow.filter((_, colIndex) => colIndex !== col)
-          : sequenceRow,
-      ),
-    });
-  };
+  // Build SVG path segments for the matrix
+  const pathSegs: Array<{ x1: number; y1: number; x2: number; y2: number; last: boolean }> = [];
+  if (solverResult) {
+    const pts = solverResult.path.slice(0, revealed);
+    const INSET = 0.36;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const ax = a.col + 0.5, ay = a.row + 0.5;
+      const bx = b.col + 0.5, by = b.row + 0.5;
+      let x1 = ax, y1 = ay, x2 = bx, y2 = by;
+      if (a.row === b.row) {
+        x1 = ax + (b.col > a.col ? INSET : -INSET);
+        x2 = bx + (b.col > a.col ? -INSET : INSET);
+      } else {
+        y1 = ay + (b.row > a.row ? INSET : -INSET);
+        y2 = by + (b.row > a.row ? -INSET : INSET);
+      }
+      pathSegs.push({ x1, y1, x2, y2, last: i === pts.length - 2 });
+    }
+  }
 
   return (
-    <section className={styles.panel}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Editable Puzzle</p>
-          <h2>Extraction Results</h2>
-        </div>
-        {analysis && (
-          <button className={styles.restoreButton} onClick={onRestoreExtracted} type="button">
-            Restore Extracted
-          </button>
-        )}
-      </header>
-
-      <div className={styles.metaRow}>
-        <label className={styles.field}>
-          <span>Buffer Size</span>
-          <input
-            max={12}
-            min={1}
-            onChange={(event) => updateBufferSize(Number(event.target.value))}
-            type="number"
-            value={puzzle.bufferSize ?? ""}
-          />
-        </label>
-
-        <label className={styles.field}>
-          <span>Matrix Size</span>
-          <select
-            onChange={(event) => onMatrixSizeChange(Number(event.target.value))}
-            value={puzzle.matrix.length}
-          >
-            {[4, 5, 6, 7, 8].map((size) => (
-              <option key={size} value={size}>
-                {size} x {size}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {analysis && (
-          <div className={styles.confidenceBadge}>
-            OCR confidence <strong>{Math.round(analysis.confidence * 100)}%</strong>
-          </div>
-        )}
-      </div>
-
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h3>Code Matrix</h3>
-        </div>
-        <div
-          className={styles.matrixGrid}
-          style={{
-            gridTemplateColumns: `repeat(${puzzle.matrix[0]?.length ?? 0}, minmax(0, 1fr))`,
-          }}
-        >
-          {puzzle.matrix.map((row, rowIndex) =>
-            row.map((value, colIndex) => (
-              <select
-                className={`${styles.codeSelect} ${
-                  lowConfidenceMatrix.has(matrixTokenKey(rowIndex, colIndex))
-                    ? styles.lowConfidence
-                    : ""
-                }`}
-                key={matrixTokenKey(rowIndex, colIndex)}
-                onChange={(event) =>
-                  updateMatrixCell(rowIndex, colIndex, event.target.value as CodeValue)
-                }
-                value={value}
+    <>
+      {/* ── B.02 CODE MATRIX ── */}
+      <section className={styles.panel}>
+        <div className={styles.panelTitle}>
+          <span>
+            <span className={styles.panelId}>B.02</span>
+            CODE MATRIX · {N}×{N}
+          </span>
+          <div className={styles.panelTitleRight}>
+            {analysis && (
+              <button
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--line)",
+                  color: "var(--muted)",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  padding: "3px 8px",
+                  cursor: "pointer",
+                }}
+                onClick={onRestoreExtracted}
+                type="button"
               >
-                <option value="">--</option>
-                {BREACH_CODES.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-            )),
-          )}
+                RESTORE
+              </button>
+            )}
+            <SizePicker
+              label="SIZE"
+              value={N}
+              options={[4, 5, 6, 7, 8]}
+              onChange={onMatrixSizeChange}
+            />
+          </div>
         </div>
-      </div>
 
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h3>Sequences</h3>
-          <button className={styles.inlineButton} onClick={addSequenceRow} type="button">
-            Add Sequence
-          </button>
-        </div>
-        <div className={styles.sequenceList}>
-          {puzzle.sequences.map((sequenceRow, rowIndex) => (
-            <div className={styles.sequenceRow} key={`sequence-${rowIndex}`}>
-              <span className={styles.sequenceLabel}>Row {rowIndex + 1}</span>
-              <div className={styles.sequenceTokens}>
-                {sequenceRow.map((value, colIndex) => (
-                  <div className={styles.sequenceToken} key={`token-${rowIndex}-${colIndex}`}>
+        <div className={styles.matrixWrap}>
+          <div
+            className={styles.matrixGrid}
+            style={{ gridTemplateColumns: `repeat(${N}, 1fr)` }}
+          >
+            {puzzle.matrix.map((row, rowIdx) =>
+              row.map((value, colIdx) => {
+                const key = matrixTokenKey(rowIdx, colIdx);
+                const stepIdx = pathStepMap.get(key);
+                const inPath = stepIdx !== undefined && stepIdx < revealed;
+                const isLowConf = lowConfidenceMatrix.has(key);
+
+                return (
+                  <div
+                    key={key}
+                    className={`${styles.matrixCell} ${inPath ? styles.matrixCellInPath : ""} ${isLowConf ? styles.lowConfidence : ""}`}
+                    style={{
+                      borderRight: colIdx < N - 1 ? "1px solid var(--line)" : "none",
+                      borderBottom: rowIdx < N - 1 ? "1px solid var(--line)" : "none",
+                    }}
+                  >
+                    {inPath && <span className={styles.pathBorder} />}
+                    {inPath && (
+                      <span className={styles.stepNumber}>
+                        {String((stepIdx ?? 0) + 1).padStart(2, "0")}
+                      </span>
+                    )}
                     <select
-                      className={styles.codeSelect}
-                      onChange={(event) =>
-                        updateSequenceToken(rowIndex, colIndex, event.target.value as CodeValue)
-                      }
+                      className={styles.matrixSelect}
+                      onChange={(e) => updateMatrixCell(rowIdx, colIdx, e.target.value as CodeValue)}
                       value={value}
                     >
                       <option value="">--</option>
                       {BREACH_CODES.map((code) => (
-                        <option key={code} value={code}>
-                          {code}
-                        </option>
+                        <option key={code} value={code}>{code}</option>
                       ))}
                     </select>
-                    {sequenceRow.length > 1 && (
-                      <button
-                        className={styles.removeTokenButton}
-                        onClick={() => removeSequenceToken(rowIndex, colIndex)}
-                        type="button"
-                      >
-                        Remove
-                      </button>
-                    )}
                   </div>
-                ))}
-              </div>
-              <div className={styles.sequenceActions}>
-                <button
-                  className={styles.inlineButton}
-                  onClick={() => addSequenceToken(rowIndex)}
-                  type="button"
+                );
+              }),
+            )}
+
+            {/* SVG path overlay */}
+            <svg
+              className={styles.matrixSvg}
+              style={{
+                gridColumn: `1 / ${N + 1}`,
+                gridRow: `1 / ${N + 1}`,
+                position: "absolute",
+                inset: 0,
+              }}
+            >
+              <defs>
+                <marker
+                  id="arrowCyan"
+                  viewBox="0 0 10 10"
+                  refX="6"
+                  refY="5"
+                  markerWidth="5"
+                  markerHeight="5"
+                  orient="auto-start-reverse"
                 >
-                  Add Token
-                </button>
-                {puzzle.sequences.length > 1 && (
-                  <button
-                    className={styles.removeRowButton}
-                    onClick={() => removeSequenceRow(rowIndex)}
-                    type="button"
-                  >
-                    Remove Row
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#5ee9f2" />
+                </marker>
+              </defs>
+              {pathSegs.map((seg, i) => (
+                <line
+                  key={i}
+                  x1={`${(seg.x1 * 100) / N}%`}
+                  y1={`${(seg.y1 * 100) / N}%`}
+                  x2={`${(seg.x2 * 100) / N}%`}
+                  y2={`${(seg.y2 * 100) / N}%`}
+                  stroke="#5ee9f2"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  markerEnd={seg.last ? "url(#arrowCyan)" : undefined}
+                />
+              ))}
+            </svg>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      {/* ── B.03 DAEMONS ── */}
+      <section className={styles.daemonsPanel}>
+        <div className={styles.panelTitle}>
+          <span>
+            <span className={styles.panelId}>B.03</span>
+            DAEMONS
+          </span>
+          <div className={styles.panelTitleRight}>
+            <SizePicker
+              label="COUNT"
+              value={puzzle.sequences.length}
+              options={[1, 2, 3, 4, 5]}
+              onChange={(count) => {
+                const current = puzzle.sequences;
+                if (count > current.length) {
+                  onChange({
+                    ...puzzle,
+                    sequences: [...current, ...Array.from({ length: count - current.length }, () => ["", ""] as CodeValue[])],
+                  });
+                } else {
+                  onChange({ ...puzzle, sequences: current.slice(0, count) });
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {puzzle.sequences.map((seq, idx) => {
+          const validTokens = seq.filter((t): t is CodeValue => t !== "");
+          const status = seqStatus(idx);
+          return (
+            <div className={styles.sequenceRow} key={`seq-${idx}`}>
+              <span className={styles.sequenceNum}>§{String(idx + 1).padStart(2, "0")}</span>
+              <TokenSequenceField
+                tokens={validTokens}
+                onChange={(next) => {
+                  const padded = [...next, ...Array.from<CodeValue>({ length: Math.max(0, seq.length - next.length) }).fill("")];
+                  updateSequence(idx, next.length >= seq.length ? next : padded);
+                }}
+              />
+              <span
+                className={`${styles.statusBadge} ${
+                  status === "matched"
+                    ? styles.statusMatched
+                    : status === "partial"
+                      ? styles.statusPartial
+                      : styles.statusPending
+                }`}
+              >
+                {status.toUpperCase()}
+              </span>
+            </div>
+          );
+        })}
+      </section>
+    </>
   );
 }

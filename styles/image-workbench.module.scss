@@ -1,108 +1,110 @@
 @use "./variables" as *;
 
+// ── A.01 IMAGE PIPELINE panel ────────────────────────────────────────────────
 .panel {
-  padding: 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  background: rgba(9, 14, 18, 0.88);
-  box-shadow: var(--shadow);
+  border: 1px solid $line;
+  background: $bg-soft;
 }
 
-.header {
+// Shared panel title bar pattern
+.panelTitle {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  align-items: start;
-}
-
-.header h2 {
-  margin: 6px 0 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--accent-strong);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.72rem;
-}
-
-.debugToggle {
-  display: inline-flex;
-  gap: 10px;
   align-items: center;
-  color: var(--muted);
-  cursor: pointer;
+  padding: 8px 14px;
+  background: $panel-strong;
+  border-bottom: 1px solid $line;
+  font-size: 11px;
+  color: $muted;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  gap: 10px;
 }
 
-.stage {
+.panelTitleLeft {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.panelId {
+  color: var(--accent);
+  margin-right: 8px;
+}
+
+.panelTitleRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.actionBtn {
+  background: $bg-soft;
+  color: $text;
+  border: 1px solid $line;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.12s;
+
+  &:hover {
+    border-color: $text;
+  }
+}
+
+.actionBtnHot {
+  background: var(--accent);
+  color: $bg;
+  border-color: var(--accent);
+}
+
+.fileNameStatus {
+  color: $ink-faint;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  transition: color 0.2s;
+
+  &.flash {
+    color: var(--accent);
+  }
+}
+
+// Preview area
+.previewArea {
   position: relative;
-  margin-top: 18px;
-  min-height: 460px;
-  border: 1px dashed rgba(178, 255, 89, 0.3);
-  border-radius: calc(var(--radius-xl) - 6px);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 18%),
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.015),
-      rgba(255, 255, 255, 0.015) 1px,
-      transparent 1px,
-      transparent 24px
-    ),
-    rgba(4, 8, 10, 0.92);
+  aspect-ratio: 16 / 10;
+  background: $panel-strong;
   overflow: hidden;
-  cursor: pointer;
 }
 
-.stageActive {
-  border-color: var(--cyan);
-  box-shadow: inset 0 0 0 1px rgba(91, 231, 255, 0.4);
-}
-
-.emptyState,
-.previewFrame {
+.previewHatch {
   position: absolute;
   inset: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0,
+    transparent 6px,
+    #{$line} 6px,
+    #{$line} 7px
+  );
+  opacity: 1;
+  transition: opacity 0.2s;
+
+  &.dimmed {
+    opacity: 0.25;
+  }
 }
 
-.emptyState {
-  display: grid;
-  place-items: center;
-  gap: 10px;
-  padding: 36px;
-  text-align: center;
-}
-
-.emptyTitle {
-  margin: 0;
-  font-size: 1.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.emptyText {
-  margin: 0;
-  color: var(--muted);
-  max-width: 380px;
-  line-height: 1.45;
-}
-
-.uploadButton {
-  margin-top: 6px;
-  border: 1px solid rgba(178, 255, 89, 0.4);
-  border-radius: 999px;
-  padding: 12px 18px;
-  background: rgba(178, 255, 89, 0.08);
-  color: var(--accent-strong);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.previewImage,
-.overlay {
+.previewImage {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -111,63 +113,241 @@
 .overlay {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .previewMeta {
   position: absolute;
-  left: 16px;
-  bottom: 16px;
-  display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(6, 12, 15, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.previewMeta span {
-  color: var(--muted);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
+  bottom: 8px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: $ink-faint;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.sampleRail {
+// Empty state (drop zone)
+.emptyState {
+  position: absolute;
+  inset: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.sampleCard {
-  display: grid;
-  gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-md);
-  padding: 10px;
-  text-align: left;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
+  place-items: center;
   cursor: pointer;
 }
 
-.sampleCard img {
-  width: 100%;
-  aspect-ratio: 1.4;
-  object-fit: cover;
-  border-radius: 10px;
+.emptyInner {
+  text-align: center;
+  padding: 24px;
 }
 
-.sampleCard span {
+.emptyTitle {
+  margin: 0 0 8px;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: $muted;
+}
+
+.emptyHint {
+  margin: 0 0 16px;
+  font-size: 11px;
+  color: $ink-faint;
+  letter-spacing: 0.08em;
+}
+
+.uploadButton {
+  border: 1px solid $line;
+  background: $bg-soft;
+  color: $text;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+}
+
+.dragActive .previewArea {
+  outline: 2px solid $cyan;
+}
+
+// Schematic overlay inside the preview (baked mock panels shown when no image)
+.schematic {
+  position: absolute;
+  inset: 10% 8%;
+  background: #000;
+  border: 1px solid $line;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.schematicPanel {
+  border: 1px solid var(--accent);
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+  font-size: 10px;
+  color: $muted;
+  position: relative;
+}
+
+.schematicLabel {
+  position: absolute;
+  top: -8px;
+  left: 6px;
+  padding: 0 6px;
+  background: var(--accent);
+  color: $bg;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.schematicRight {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schematicSeq {
+  flex: 1;
+}
+
+.schematicBuf {
+  display: flex;
+  gap: 3px;
+}
+
+.schematicBufSlot {
+  width: 12px;
+  height: 8px;
+  border: 1px solid $muted;
+}
+
+// Pipeline status strip
+.statusStrip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid $line;
+}
+
+.statusCell {
+  padding: 10px 12px;
+  border-right: 1px solid $line;
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+.statusCellLabel {
+  color: $muted;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.sampleCard small {
-  color: var(--muted);
+.statusCellValue {
+  color: var(--accent);
+  font-weight: 700;
 }
 
+.statusCellPending {
+  color: $ink-faint;
+}
+
+// Debug toggle
+.debugToggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: $muted;
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+// Sample tray
+.sampleTray {
+  border-top: 1px solid $line;
+  padding: 12px;
+  background: $panel-strong;
+}
+
+.sampleTrayLabel {
+  font-size: 10px;
+  color: $muted;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.sampleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 4px;
+}
+
+.sampleCard {
+  aspect-ratio: 16 / 10;
+  background: #000;
+  border: 1px solid $line;
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+
+  &:hover {
+    border-color: $muted;
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.6;
+  }
+}
+
+.sampleCardActive {
+  border: 2px solid var(--accent) !important;
+
+  img {
+    opacity: 1;
+  }
+}
+
+.sampleCardLabel {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 8px;
+  color: $muted;
+  letter-spacing: 0.08em;
+}
+
+.sampleCardLabelActive {
+  color: var(--accent);
+}
+
+// SVG overlay rects (debug mode)
 .panelRect,
 .tokenRect,
 .sequenceRect,
@@ -177,28 +357,29 @@
 }
 
 .panelRect {
-  stroke: rgba(178, 255, 89, 0.72);
+  stroke: var(--accent);
   stroke-width: 2;
 }
 
 .tokenRect {
-  stroke: rgba(91, 231, 255, 0.75);
+  stroke: $cyan;
   stroke-width: 1.4;
 }
 
 .sequenceRect {
-  stroke: rgba(255, 211, 107, 0.8);
+  stroke: var(--warning);
   stroke-width: 1.4;
 }
 
 .bufferRect {
-  stroke: rgba(244, 247, 239, 0.62);
+  stroke: $text;
   stroke-width: 1.4;
+  opacity: 0.6;
 }
 
 .pathLine {
   fill: none;
-  stroke: rgba(91, 231, 255, 0.9);
+  stroke: $cyan;
   stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -206,8 +387,8 @@
 }
 
 .pathDot {
-  fill: rgba(91, 231, 255, 0.28);
-  stroke: rgba(91, 231, 255, 0.95);
+  fill: rgba(94, 233, 242, 0.28);
+  stroke: $cyan;
   stroke-width: 2.5;
   vector-effect: non-scaling-stroke;
 }
@@ -217,14 +398,4 @@
   font-size: 20px;
   font-weight: 700;
   text-anchor: middle;
-}
-
-@media (max-width: $mobile) {
-  .panel {
-    padding: 18px;
-  }
-
-  .stage {
-    min-height: 320px;
-  }
 }

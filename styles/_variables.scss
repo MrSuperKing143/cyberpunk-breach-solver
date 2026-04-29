@@ -1,22 +1,24 @@
-$bg: #081116;
-$bg-soft: #111c20;
-$panel: rgba(9, 16, 20, 0.9);
-$panel-strong: rgba(10, 18, 22, 0.96);
-$line: rgba(147, 255, 79, 0.18);
-$line-strong: rgba(168, 255, 91, 0.45);
-$text: #f4f7ef;
-$muted: rgba(228, 240, 222, 0.64);
-$accent: #b2ff59;
-$accent-strong: #d5ff54;
-$cyan: #5be7ff;
-$danger: #ff7f6b;
-$warning: #ffd36b;
-$shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+// Brutalist palette
+$bg:           #0e0e0e;
+$bg-soft:      #161616;
+$panel:        rgba(22, 22, 22, 1);
+$panel-strong: rgba(10, 10, 10, 1);
+$line:         #2a2a2a;
+$line-strong:  #404040;
+$text:         #ffffff;
+$muted:        #a0a0a0;
+$ink-faint:    #5a5a5a;
+$accent:       oklch(86% 0.22 130);
+$accent-strong: oklch(86% 0.22 130);
+$cyan:         #5ee9f2;
+$danger:       oklch(70% 0.18 25);
+$warning:      oklch(78% 0.18 75);
+$shadow:       none;
 
-$radius-xl: 28px;
-$radius-lg: 18px;
-$radius-md: 12px;
+$radius-xl: 0px;
+$radius-lg: 0px;
+$radius-md: 0px;
 
 $desktop: 1180px;
-$tablet: 900px;
-$mobile: 640px;
+$tablet:  900px;
+$mobile:  640px;
