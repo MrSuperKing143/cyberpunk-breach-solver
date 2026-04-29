@@ -1,25 +1,10 @@
 @use "./variables" as *;
+@use "./mixins" as *;
 
 // ── A.01 IMAGE PIPELINE panel ────────────────────────────────────────────────
-.panel {
-  border: 1px solid $line;
-  background: $bg-soft;
-}
+.panel { @include panel; }
 
-// Shared panel title bar pattern
-.panelTitle {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 14px;
-  background: $panel-strong;
-  border-bottom: 1px solid $line;
-  font-size: 11px;
-  color: $muted;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  gap: 10px;
-}
+.panelTitle { @include panel-title; }
 
 .panelTitleLeft {
   display: flex;
@@ -27,15 +12,10 @@
   gap: 0;
 }
 
-.panelId {
-  color: var(--accent);
-  margin-right: 8px;
-}
+.panelId { @include panel-id; }
 
 .panelTitleRight {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  @include panel-title-right;
   flex-wrap: wrap;
 }
 

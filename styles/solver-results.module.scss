@@ -1,78 +1,17 @@
 @use "./variables" as *;
+@use "./mixins" as *;
 
 // ── B.01 BUFFER panel ────────────────────────────────────────────────────────
-.panel {
-  border: 1px solid $line;
-  background: $bg-soft;
-}
-
-.panelTitle {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 14px;
-  background: $panel-strong;
-  border-bottom: 1px solid $line;
-  font-size: 11px;
-  color: $muted;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  gap: 10px;
-}
-
-.panelId {
-  color: var(--accent);
-  margin-right: 8px;
-}
-
-.panelTitleRight {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.panel { @include panel; }
+.panelTitle { @include panel-title; }
+.panelId { @include panel-id; }
+.panelTitleRight { @include panel-title-right; }
 
 // Stepper (shared pattern)
-.sizePicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-left: 1px solid $line;
-  padding-left: 10px;
-}
-
-.sizePickerLabel {
-  color: $ink-faint;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.sizePickerValue {
-  min-width: 28px;
-  text-align: center;
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 11px;
-}
-
-.sizePickerBtn {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  background: $bg-soft;
-  color: $text;
-  border: 1px solid $line;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-
-  &:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-}
+.sizePicker { @include size-picker; }
+.sizePickerLabel { @include size-picker-label; }
+.sizePickerValue { @include size-picker-value; }
+.sizePickerBtn { @include size-picker-btn; }
 
 // Buffer slots grid
 .bufferWrap {

@@ -1,0 +1,77 @@
+@use "./variables" as *;
+
+// Shared panel chrome
+@mixin panel {
+  border: 1px solid $line;
+  background: $bg-soft;
+}
+
+@mixin panel-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: $panel-strong;
+  border-bottom: 1px solid $line;
+  font-size: 11px;
+  color: $muted;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  gap: 10px;
+}
+
+@mixin panel-id {
+  color: var(--accent);
+  margin-right: 8px;
+}
+
+@mixin panel-title-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+// Stepper widget used in panel title bars
+@mixin size-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 1px solid $line;
+  padding-left: 10px;
+}
+
+@mixin size-picker-label {
+  color: $ink-faint;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+@mixin size-picker-value {
+  min-width: 28px;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+@mixin size-picker-btn {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  background: $bg-soft;
+  color: $text;
+  border: 1px solid $line;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
