@@ -1,6 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { recognizeCodeToken } from "@/lib/analysis/ocr";
-import { loadOpenCv, safeDelete } from "@/lib/analysis/opencv";
+import { loadOpenCv } from "@/lib/analysis/opencv";
+import {
+  type PanelRects,
+  buildEdgeMask,
+  centersToBounds,
+  detectBufferSlots,
+  estimateBufferRect,
+  findPanelByAnchor,
+  findPeaks,
+  findSequenceContentWidth,
+  groupPeaks,
+  integerRect,
+  matColSums,
+  matRowSums,
+  preprocessEdgesForGrid,
+  safeDelete,
+  trimEdgeNoise,
+} from "@/lib/analysis/extract-core";
 import {
   type AnalysisResult,
   type CodeValue,
@@ -9,23 +26,6 @@ import {
   type Rect,
   createEmptyPuzzle,
 } from "@/lib/types/breach";
-
-type PanelKey = "matrix" | "sequence" | "buffer";
-
-interface PanelRects {
-  matrix?: Rect;
-  sequence?: Rect;
-  buffer?: Rect;
-}
-
-
-// Fractional [x, y] anchor points within each panel's content area.
-// The detection finds the smallest contour that contains the anchor point.
-const panelAnchorPoints: Record<PanelKey, [number, number]> = {
-  matrix:   [0.25, 0.40],
-  sequence: [0.55, 0.35],
-  buffer:   [0.50, 0.20],
-};
 
 function loadImage(src: string, name?: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -44,315 +44,6 @@ function createCanvas(width: number, height: number) {
   return canvas;
 }
 
-function integerRect(rect: Rect): Rect {
-  return {
-    x: Math.max(Math.round(rect.x), 0),
-    y: Math.max(Math.round(rect.y), 0),
-    width: Math.max(Math.round(rect.width), 1),
-    height: Math.max(Math.round(rect.height), 1),
-  };
-}
-
-function toRect(rect: { x: number; y: number; width: number; height: number }): Rect {
-  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-}
-
-function unionRect(left: Rect, right: Rect): Rect {
-  const x = Math.min(left.x, right.x);
-  const y = Math.min(left.y, right.y);
-  const maxX = Math.max(left.x + left.width, right.x + right.width);
-  const maxY = Math.max(left.y + left.height, right.y + right.height);
-
-  return {
-    x,
-    y,
-    width: maxX - x,
-    height: maxY - y,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Projection-based grid helpers
-// ---------------------------------------------------------------------------
-
-function matColSums(mat: any): number[] {
-  const { rows, cols } = mat;
-  const data = mat.data as Uint8Array;
-  const sums = new Array<number>(cols).fill(0);
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sums[c] += data[r * cols + c];
-  return sums;
-}
-
-function matRowSums(mat: any): number[] {
-  const { rows, cols } = mat;
-  const data = mat.data as Uint8Array;
-  const sums = new Array<number>(rows).fill(0);
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sums[r] += data[r * cols + c];
-  return sums;
-}
-
-function findPeaks(projection: number[], thresholdRatio = 0.5): number[] {
-  const threshold = Math.max(...projection) * thresholdRatio;
-  return projection.reduce<number[]>((acc, v, i) => { if (v > threshold) acc.push(i); return acc; }, []);
-}
-
-function groupPeaks(peaks: number[], minGap = 5): number[] {
-  if (peaks.length === 0) return [];
-  const groups: number[] = [];
-  let current = [peaks[0]];
-  for (const p of peaks.slice(1)) {
-    if (p - current[current.length - 1] <= minGap) current.push(p);
-    else { groups.push(Math.floor(current.reduce((a, b) => a + b, 0) / current.length)); current = [p]; }
-  }
-  groups.push(Math.floor(current.reduce((a, b) => a + b, 0) / current.length));
-  return groups;
-}
-
-function centersToBounds(centers: number[], maxVal: number): number[] {
-  if (centers.length < 2) return [0, maxVal];
-  const bounds = [Math.max(0, centers[0] - Math.floor((centers[1] - centers[0]) / 2))];
-  for (let i = 0; i < centers.length - 1; i++) bounds.push(Math.floor((centers[i] + centers[i + 1]) / 2));
-  bounds.push(Math.min(maxVal, centers[centers.length - 1] + Math.floor((centers[centers.length - 1] - centers[centers.length - 2]) / 2)));
-  return bounds;
-}
-
-// Trim rows/cols where Canny edge density exceeds 2× the median — removes frame borders.
-function trimEdgeNoise(cv: any, source: any, rect: Rect, maxInset = 20): Rect {
-  const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
-  const gray = new cv.Mat();
-  const edges = new cv.Mat();
-  try {
-    cv.cvtColor(crop, gray, cv.COLOR_RGBA2GRAY);
-    cv.Canny(gray, edges, 50, 150);
-    const { rows, cols } = edges;
-    const rowSums = matRowSums(edges);
-    const colSums = matColSums(edges);
-    const rowMedian = [...rowSums].sort((a, b) => a - b)[Math.floor(rows / 2)];
-    const colMedian = [...colSums].sort((a, b) => a - b)[Math.floor(cols / 2)];
-    const rowThreshold = rowMedian * 2;
-    const colThreshold = colMedian * 2;
-    let top = 0;       while (top < maxInset          && rowSums[top]        > rowThreshold) top++;
-    let bottom = rows; while (bottom > rows - maxInset && rowSums[bottom - 1] > rowThreshold) bottom--;
-    let left = 0;      while (left < maxInset          && colSums[left]       > colThreshold) left++;
-    let right = cols;  while (right > cols - maxInset  && colSums[right - 1]  > colThreshold) right--;
-    return integerRect({ x: rect.x + left, y: rect.y + top, width: right - left, height: bottom - top });
-  } finally {
-    safeDelete(crop, gray, edges);
-  }
-}
-
-// Gaussian blur → Canny → 5-iteration dilation; caller must delete the returned Mat.
-function preprocessEdgesForGrid(cv: any, source: any, rect: Rect): any {
-  const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
-  const gray = new cv.Mat();
-  const blur = new cv.Mat();
-  const edges = new cv.Mat();
-  const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-  const dilated = new cv.Mat();
-  try {
-    cv.cvtColor(crop, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0);
-    cv.Canny(blur, edges, 50, 150);
-    cv.dilate(edges, dilated, kernel, new cv.Point(-1, -1), 5);
-    safeDelete(crop, gray, blur, edges, kernel);
-    return dilated;
-  } catch (error) {
-    safeDelete(crop, gray, blur, edges, kernel, dilated);
-    throw error;
-  }
-}
-
-// Scan colSums for the first wide (≥15 col) near-zero valley past the left 20% — the gap
-// between hex-code cells and daemon descriptions.
-function findSequenceContentWidth(colSums: number[], totalWidth: number): number {
-  const valleyThreshold = Math.max(...colSums) * 0.05;
-  let gapStart: number | null = null;
-  for (let x = Math.floor(totalWidth / 5); x < totalWidth; x++) {
-    if (colSums[x] <= valleyThreshold) {
-      if (gapStart === null) gapStart = x;
-      else if (x - gapStart >= 15) return gapStart;
-    } else {
-      gapStart = null;
-    }
-  }
-  return totalWidth;
-}
-
-function buildEdgeMask(cv: any, source: any): any {
-  const gray = new cv.Mat();
-  const blur = new cv.Mat();
-  const edges = new cv.Mat();
-
-  try {
-    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0);
-    cv.Canny(blur, edges, 30, 120);
-    safeDelete(gray, blur);
-    return edges;
-  } catch (error) {
-    safeDelete(gray, blur, edges);
-    throw error;
-  }
-}
-
-function findPanelByAnchor(
-  cv: any,
-  edges: any,
-  key: PanelKey,
-  width: number,
-  height: number,
-): Rect | undefined {
-  const [fx, fy] = panelAnchorPoints[key];
-  const px = fx * width;
-  const py = fy * height;
-  const imgArea = width * height;
-
-  // findContours modifies the source image, so work on a copy.
-  const edgesCopy = new cv.Mat();
-  const contours = new cv.MatVector();
-  const hierarchy = new cv.Mat();
-  let result: Rect | undefined;
-
-  try {
-    edges.copyTo(edgesCopy);
-    cv.findContours(edgesCopy, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-
-    let bestArea = Infinity;
-
-    for (let i = 0; i < contours.size(); i += 1) {
-      const contour = contours.get(i);
-      const approx = new cv.Mat();
-      try {
-        const r = cv.boundingRect(contour);
-        const area = r.width * r.height;
-
-        if (area < 10000 || area > imgArea * 0.5) continue;
-
-        cv.approxPolyDP(contour, approx, 0.02 * cv.arcLength(contour, true), true);
-        if (approx.rows < 4) continue;
-
-        if (cv.pointPolygonTest(contour, { x: px, y: py }, false) < 0) continue;
-
-        if (area < bestArea) {
-          bestArea = area;
-          result = integerRect({ x: r.x, y: r.y, width: r.width, height: r.height });
-        }
-      } finally {
-        contour.delete();
-        approx.delete();
-      }
-    }
-
-    if (result) {
-      console.log(`[panel:${key}] detected`, JSON.stringify(result), `img=${width}x${height}`);
-    } else {
-      console.warn(`[panel:${key}] no containing contour for anchor (${Math.round(px)}, ${Math.round(py)})`);
-    }
-  } finally {
-    safeDelete(edgesCopy, contours, hierarchy);
-  }
-
-  return result;
-}
-
-function estimateBufferRect(panels: PanelRects, width: number) {
-  if (!panels.matrix || !panels.sequence) {
-    return undefined;
-  }
-
-  const frame = unionRect(panels.matrix, panels.sequence);
-  return integerRect({
-    x: frame.x + frame.width * 0.42,
-    y: Math.max(frame.y - frame.height * 0.22, 0),
-    width: Math.min(frame.width * 0.19, width * 0.26),
-    height: frame.height * 0.16,
-  });
-}
-
-function buildTextMask(cv: any, source: any) {
-  const rgb = new cv.Mat();
-  const hsv = new cv.Mat();
-  const gray = new cv.Mat();
-  const hueMask = new cv.Mat();
-  const brightnessMask = new cv.Mat();
-  const combined = new cv.Mat();
-  const kernel = cv.Mat.ones(2, 2, cv.CV_8U);
-  let hueLower: any = null;
-  let hueUpper: any = null;
-
-  try {
-    cv.cvtColor(source, rgb, cv.COLOR_RGBA2RGB);
-    cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
-    cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
-    hueLower = cv.matFromArray(1, 1, hsv.type(), [15, 18, 110]);
-    hueUpper = cv.matFromArray(1, 1, hsv.type(), [68, 255, 255]);
-    cv.inRange(hsv, hueLower, hueUpper, hueMask);
-    cv.threshold(gray, brightnessMask, 135, 255, cv.THRESH_BINARY);
-    cv.bitwise_or(hueMask, brightnessMask, combined);
-    cv.morphologyEx(combined, combined, cv.MORPH_OPEN, kernel);
-    safeDelete(rgb, hsv, gray, hueMask, brightnessMask, kernel, hueLower, hueUpper);
-    return combined;
-  } catch (error) {
-    safeDelete(rgb, hsv, gray, hueMask, brightnessMask, combined, kernel, hueLower, hueUpper);
-    throw error;
-  }
-}
-
-function absoluteBufferSlots(rects: Rect[], panelRect: Rect) {
-  return rects.map((rect) => integerRect({
-    x: panelRect.x + rect.x,
-    y: panelRect.y + rect.y,
-    width: rect.width,
-    height: rect.height,
-  }));
-}
-
-function detectBufferSlots(cv: any, source: any, rect: Rect) {
-  const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
-  const { rows: bufH, cols: bufW } = crop;
-  const bufArea = bufH * bufW;
-  const gray = new cv.Mat();
-  const edges = new cv.Mat();
-  const dilated = new cv.Mat();
-  const processed = new cv.Mat();
-  const contours = new cv.MatVector();
-  const hierarchy = new cv.Mat();
-  const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-
-  try {
-    cv.cvtColor(crop, gray, cv.COLOR_RGBA2GRAY);
-    cv.Canny(gray, edges, 30, 150);
-    cv.dilate(edges, dilated, kernel, new cv.Point(-1, -1), 3);
-    cv.morphologyEx(dilated, processed, cv.MORPH_CLOSE, kernel, new cv.Point(-1, -1), 2);
-    cv.findContours(processed, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-
-    const boxes: Rect[] = [];
-    for (let index = 0; index < contours.size(); index += 1) {
-      const contour = contours.get(index);
-      try {
-        const r = cv.boundingRect(contour);
-        const area = r.width * r.height;
-        const aspect = r.height > 0 ? r.width / r.height : 0;
-        if (aspect > 0.5 && aspect < 2.5 && area / bufArea > 0.005 && area / bufArea < 0.5)
-          boxes.push(toRect(r));
-      } finally {
-        contour.delete();
-      }
-    }
-
-    boxes.sort((a, b) => a.x - b.x);
-    const merged: Rect[] = [];
-    for (const box of boxes) {
-      const prev = merged[merged.length - 1];
-      if (!prev || box.x > prev.x + prev.width * 0.5) merged.push(box);
-    }
-
-    return absoluteBufferSlots(merged, rect);
-  } finally {
-    safeDelete(crop, gray, edges, dilated, processed, contours, hierarchy, kernel);
-  }
-}
-
 function cropForOcr(cv: any, source: any, rect: Rect) {
   const paddedRect = {
     x: Math.max(Math.floor(rect.x - 4), 0),
@@ -366,29 +57,48 @@ function cropForOcr(cv: any, source: any, rect: Rect) {
   const crop = source.roi(
     new cv.Rect(paddedRect.x, paddedRect.y, paddedRect.width, paddedRect.height),
   );
-  const mask = buildTextMask(cv, crop);
-  const dilated = new cv.Mat();
-  const resized = new cv.Mat();
-  const inverted = new cv.Mat();
-  const kernel = cv.Mat.ones(2, 2, cv.CV_8U);
+  const { rows: h, cols: w } = crop;
+
+  const upscaled = new cv.Mat();
+  const gray = new cv.Mat();
+  const enhanced = new cv.Mat();
+  const sharpenKernel = cv.matFromArray(3, 3, cv.CV_32F, [0, -1, 0, -1, 5, -1, 0, -1, 0]);
+  const sharpened = new cv.Mat();
+  const binary = new cv.Mat();
+  const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+  const cleaned = new cv.Mat();
 
   try {
-    cv.dilate(mask, dilated, kernel);
-    cv.resize(
-      dilated,
-      resized,
-      new cv.Size(Math.max(dilated.cols * 5, 72), Math.max(dilated.rows * 5, 54)),
-      0,
-      0,
-      cv.INTER_NEAREST,
-    );
-    cv.bitwise_not(resized, inverted);
+    cv.resize(crop, upscaled, new cv.Size(w * 5, h * 5), 0, 0, cv.INTER_CUBIC);
+    cv.cvtColor(upscaled, gray, cv.COLOR_RGBA2GRAY);
 
-    const canvas = createCanvas(inverted.cols, inverted.rows);
-    cv.imshow(canvas, inverted);
+    const clahe = new cv.CLAHE(3.0, new cv.Size(4, 4));
+    clahe.apply(gray, enhanced);
+    clahe.delete();
+
+    cv.filter2D(enhanced, sharpened, -1, sharpenKernel);
+    cv.threshold(sharpened, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+
+    // Sample border pixels to detect background brightness
+    const { rows: bh, cols: bw } = binary;
+    const bdata = binary.data as Uint8Array;
+    let sum = 0, count = 0;
+    for (let c = 0; c < bw; c++) { sum += bdata[c]; sum += bdata[(bh - 1) * bw + c]; count += 2; }
+    for (let r = 1; r < bh - 1; r++) { sum += bdata[r * bw]; sum += bdata[r * bw + bw - 1]; count += 2; }
+    const bgIsDark = (sum / count) < 127;
+    if (!bgIsDark) cv.bitwise_not(binary, binary);
+
+    cv.morphologyEx(binary, cleaned, cv.MORPH_OPEN, morphKernel, new cv.Point(-1, -1), 2);
+    cv.morphologyEx(cleaned, cleaned, cv.MORPH_CLOSE, morphKernel, new cv.Point(-1, -1), 1);
+
+    // Tesseract expects dark text on white background
+    if (bgIsDark) cv.bitwise_not(cleaned, cleaned);
+
+    const canvas = createCanvas(cleaned.cols, cleaned.rows);
+    cv.imshow(canvas, cleaned);
     return canvas;
   } finally {
-    safeDelete(crop, mask, dilated, resized, inverted, kernel);
+    safeDelete(crop, upscaled, gray, enhanced, sharpenKernel, sharpened, binary, morphKernel, cleaned);
   }
 }
 

@@ -139,15 +139,3 @@ export async function loadOpenCv() {
 
   return openCvPromise;
 }
-
-export function safeDelete(...values: unknown[]) {
-  for (const value of values) {
-    if (value && typeof value === "object" && "delete" in value) {
-      try {
-        (value as { delete: () => void }).delete();
-      } catch {
-        // OpenCV.js throws if a Mat has already been deleted. Ignore cleanup races.
-      }
-    }
-  }
-}
