@@ -36,6 +36,7 @@ export interface DebugToken {
   rawText: string;
   value: CodeValue;
   confidence: number;
+  maskDataUrl: string;
 }
 
 export interface AnalysisDebug {

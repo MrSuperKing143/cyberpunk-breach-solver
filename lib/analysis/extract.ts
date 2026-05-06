@@ -45,17 +45,15 @@ function createCanvas(width: number, height: number) {
 }
 
 function cropForOcr(cv: any, source: any, rect: Rect) {
-  const paddedRect = {
-    x: Math.max(Math.floor(rect.x - 4), 0),
-    y: Math.max(Math.floor(rect.y - 4), 0),
-    width: Math.min(Math.ceil(rect.width + 8), source.cols - Math.max(Math.floor(rect.x - 4), 0)),
-    height: Math.min(
-      Math.ceil(rect.height + 8),
-      source.rows - Math.max(Math.floor(rect.y - 4), 0),
-    ),
-  };
+  const x = Math.max(Math.floor(rect.x), 0);
+  const y = Math.max(Math.floor(rect.y), 0);
   const crop = source.roi(
-    new cv.Rect(paddedRect.x, paddedRect.y, paddedRect.width, paddedRect.height),
+    new cv.Rect(
+      x,
+      y,
+      Math.min(Math.ceil(rect.width), source.cols - x),
+      Math.min(Math.ceil(rect.height), source.rows - y),
+    ),
   );
   const { rows: h, cols: w } = crop;
 
@@ -93,6 +91,33 @@ function cropForOcr(cv: any, source: any, rect: Rect) {
 
     // Tesseract expects dark text on white background
     if (bgIsDark) cv.bitwise_not(cleaned, cleaned);
+
+    // Trim whitespace: scan pixel data to find bounding box of dark (text) pixels
+    const { rows: ch, cols: cw } = cleaned;
+    const cdata = cleaned.data as Uint8Array;
+    let minX = cw, maxX = -1, minY = ch, maxY = -1;
+    for (let row = 0; row < ch; row++) {
+      for (let col = 0; col < cw; col++) {
+        if (cdata[row * cw + col] < 128) {
+          if (col < minX) minX = col;
+          if (col > maxX) maxX = col;
+          if (row < minY) minY = row;
+          if (row > maxY) maxY = row;
+        }
+      }
+    }
+    if (maxX >= 0) {
+      const pad = 8;
+      const x = Math.max(0, minX - pad);
+      const y = Math.max(0, minY - pad);
+      const tw = Math.min(cw - x, maxX - minX + 1 + 2 * pad);
+      const th = Math.min(ch - y, maxY - minY + 1 + 2 * pad);
+      const tight = cleaned.roi(new cv.Rect(x, y, tw, th));
+      const canvas = createCanvas(tight.cols, tight.rows);
+      cv.imshow(canvas, tight);
+      tight.delete();
+      return canvas;
+    }
 
     const canvas = createCanvas(cleaned.cols, cleaned.rows);
     cv.imshow(canvas, cleaned);
@@ -144,6 +169,7 @@ async function extractMatrix(
         height: rowBounds[r + 1] - rowBounds[r],
       });
       const canvas = cropForOcr(cv, source, cellRect);
+      const maskDataUrl = canvas.toDataURL("image/png");
       const token = await recognizeCodeToken(canvas);
       matrix[r][c] = token.value;
       debugTokens.push({
@@ -154,6 +180,7 @@ async function extractMatrix(
         rawText: token.rawText,
         value: token.value,
         confidence: token.confidence,
+        maskDataUrl,
       });
     }
   }
@@ -219,6 +246,7 @@ async function extractSequences(
         height: rowBounds[r + 1] - rowBounds[r],
       });
       const canvas = cropForOcr(cv, source, cellRect);
+      const maskDataUrl = canvas.toDataURL("image/png");
       const token = await recognizeCodeToken(canvas);
       sequences[r].push(token.value);
       debugTokens.push({
@@ -229,6 +257,7 @@ async function extractSequences(
         rawText: token.rawText,
         value: token.value,
         confidence: token.confidence,
+        maskDataUrl,
       });
     }
   }

@@ -70,7 +70,7 @@ async function resolveRuntime() {
       throw new Error("OpenCV.js resolved, but the runtime methods are unavailable.");
     }
 
-    window.cv = resolved;
+    window.cv = resolved as unknown as typeof window.cv;
     return resolved;
   }
 
