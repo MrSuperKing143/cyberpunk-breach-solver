@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { DemoSample } from "@/lib/sample-gallery";
 import type { AnalysisResult, SolverResult } from "@/lib/types/breach";
 import styles from "@/styles/image-workbench.module.scss";
 
@@ -16,9 +15,7 @@ interface PreviewSource {
 interface ImageWorkbenchProps {
   analysis: AnalysisResult | null;
   onFileSelected: (file: File) => void;
-  onSelectSample: (sampleId: string) => void;
   preview: PreviewSource | null;
-  samples: DemoSample[];
   showDebug: boolean;
   solverResult: SolverResult | null;
   toggleDebug: (next: boolean) => void;
@@ -45,9 +42,7 @@ function boxBorderPoint(
 export function ImageWorkbench({
   analysis,
   onFileSelected,
-  onSelectSample,
   preview,
-  samples,
   showDebug,
   solverResult,
   toggleDebug,
@@ -128,8 +123,6 @@ export function ImageWorkbench({
 
   const imageWidth = analysis?.image.width ?? 1600;
   const imageHeight = analysis?.image.height ?? 900;
-
-  const activeSampleId = preview?.origin === "sample" ? preview.name : null;
 
   const pipelineStatus = analysis
     ? [
@@ -350,33 +343,6 @@ export function ImageWorkbench({
         ))}
       </div>
 
-      {/* Sample tray */}
-      <div className={styles.sampleTray}>
-        <div className={styles.sampleTrayLabel}>
-          SAMPLES · {samples.length} ENTRIES
-        </div>
-        <div className={styles.sampleGrid}>
-          {samples.map((sample) => (
-            <button
-              className={`${styles.sampleCard} ${
-                activeSampleId === sample.label ? styles.sampleCardActive : ""
-              }`}
-              key={sample.id}
-              onClick={() => onSelectSample(sample.id)}
-              type="button"
-            >
-              <img alt={sample.label} src={sample.src} />
-              <span
-                className={`${styles.sampleCardLabel} ${
-                  activeSampleId === sample.label ? styles.sampleCardLabelActive : ""
-                }`}
-              >
-                {sample.id}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
     </section>
   );
 }

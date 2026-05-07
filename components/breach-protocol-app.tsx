@@ -12,7 +12,6 @@ import { ImageWorkbench } from "@/components/image-workbench";
 import { PuzzleEditor } from "@/components/puzzle-editor";
 import { SolverResults } from "@/components/solver-results";
 import { analyzeBreachImage } from "@/lib/analysis/extract";
-import { demoSamples } from "@/lib/sample-gallery";
 import { solveBreachPuzzle } from "@/lib/solver/breach-solver";
 import {
   type AnalysisResult,
@@ -97,17 +96,6 @@ export function BreachProtocolApp() {
     setRevealed(0);
     setError(null);
     setStatus(`LOADED ${file.name.toUpperCase()}`);
-  };
-
-  const handleSelectSample = (sampleId: string) => {
-    const sample = demoSamples.find((entry) => entry.id === sampleId);
-    if (!sample) return;
-    setPreviewSource({ src: sample.src, name: sample.label, origin: "sample" });
-    setAnalysis(null);
-    setSolverResult(null);
-    setRevealed(0);
-    setError(null);
-    setStatus(`SAMPLE LOADED · ${sample.label.toUpperCase()}`);
   };
 
   const handleAnalyze = async () => {
@@ -299,9 +287,7 @@ export function BreachProtocolApp() {
           <ImageWorkbench
             analysis={analysis}
             onFileSelected={handleFileSelected}
-            onSelectSample={handleSelectSample}
             preview={preview}
-            samples={demoSamples}
             showDebug={showDebug}
             solverResult={solverResult}
             toggleDebug={setShowDebug}
