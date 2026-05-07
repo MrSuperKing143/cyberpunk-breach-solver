@@ -6,14 +6,8 @@ type OcrWorker = Awaited<ReturnType<TesseractModule["createWorker"]>>;
 let ocrWorkerPromise: Promise<OcrWorker> | null = null;
 
 const confusionGroups = [
-  "1IL|",
-  "5S",
-  "7T",
-  "A4",
-  "B8",
-  "CD0OQ",
+  "CD",
   "EF",
-  "9GQ",
 ];
 
 function sameGroup(left: string, right: string) {
@@ -21,7 +15,7 @@ function sameGroup(left: string, right: string) {
 }
 
 function cleanRawToken(rawText: string) {
-  return rawText.toUpperCase().replace(/[^A-Z0-9|]/g, "");
+  return rawText.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 function scoreCandidate(rawText: string, candidate: BreachCode) {
@@ -29,7 +23,7 @@ function scoreCandidate(rawText: string, candidate: BreachCode) {
   let score = 0;
 
   for (let index = 0; index < candidate.length; index += 1) {
-    const actual = padded[index] ?? " ";
+    const actual = padded[index];
     const expected = candidate[index];
 
     if (actual === expected) {
@@ -94,10 +88,13 @@ function normalizeToCode(rawText: string, baseConfidence: number): {
 async function getWorker() {
   if (!ocrWorkerPromise) {
     ocrWorkerPromise = import("tesseract.js").then(async (module) => {
-      const worker = await module.createWorker("eng");
+      const worker = await module.createWorker("cp2077_breach", 1, {
+        langPath: "/tessdata",
+      });
       await worker.setParameters({
         preserve_interword_spaces: "1",
-        tessedit_char_whitelist: "1234567890ABCDEFILS|",
+        tessedit_char_whitelist: "1579ABCDEF",
+        tessedit_pageseg_mode: module.PSM.SINGLE_WORD,
       });
       return worker;
     });
@@ -108,15 +105,6 @@ async function getWorker() {
 
 export async function recognizeCodeToken(canvas: HTMLCanvasElement) {
   const worker = await getWorker();
-  const tesseract = await import("tesseract.js");
-
-  await worker.setParameters({
-    tessedit_pageseg_mode: tesseract.PSM.SINGLE_WORD,
-  });
-
-  const {
-    data: { text, confidence },
-  } = await worker.recognize(canvas);
-
+  const { data: { text, confidence } } = await worker.recognize(canvas);
   return normalizeToCode(text, Math.max(confidence / 100, 0));
 }
