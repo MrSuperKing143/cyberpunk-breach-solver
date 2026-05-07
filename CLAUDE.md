@@ -13,15 +13,20 @@ When starting work on this Next.js project, ALWAYS call the `init` tool from nex
 ```bash
 npm run dev        # start dev server at http://localhost:3000
 npm run build      # static export to out/
+npm start          # serve the built out/ directory locally
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
 ```
 
 There are no tests. Verification is `npm run lint && npm run typecheck && npm run build`.
 
+Path alias `@/*` resolves to the repo root (e.g. `@/lib/types/breach`).
+
 ## Architecture
 
-Pure client-side static-export Next.js 16 app (`output: "export"` in `next.config.ts`). No server routes, no API. Everything runs in the browser.
+Pure client-side static-export Next.js 16 app (`output: "export"` in `next.config.ts`). No server routes, no API. Everything runs in the browser. React 19 compiler is enabled (`reactCompiler: true` in `next.config.ts`) — avoid manual `useMemo`/`useCallback` unless the compiler directive `"use no memo"` is present.
+
+**Routes:** `/` — main app; `/debug` — visualises panel detection overlays and OCR tokens; `/ground-truth` — side-by-side expected-vs-actual for sample images (used for tuning `panelAnchorPoints`).
 
 **Data flow:**
 
@@ -31,10 +36,10 @@ Pure client-side static-export Next.js 16 app (`output: "export"` in `next.confi
    - Lazy-loads OpenCV.js via `lib/analysis/opencv.ts`
    - Downsamples input to ≤1920px, builds a Canny edge mask, then locates each panel by finding the smallest contour containing a per-panel fractional anchor point (`panelAnchorPoints` in `extract.ts`)
    - Trims frame borders via `trimEdgeNoise`, then finds grid lines via column/row projection sums (`matColSums`/`matRowSums` → `findPeaks` → `groupPeaks` → `centersToBounds`)
-   - Crops each cell, builds a neon-hue HSV + brightness binary mask, upscales 5×, and OCRs via Tesseract.js (`lib/analysis/ocr.ts`)
+   - Crops each cell, builds a neon-hue HSV + brightness binary mask, upscales 5×, and OCRs via Tesseract.js (`lib/analysis/ocr.ts`). Low-level OpenCV operations (edge detection, grid finding, contour analysis) live in `lib/analysis/extract-core.ts`.
    - Fuzzy-maps raw OCR text onto the six allowed codes: `1C 55 7A BD E9 FF`
 4. Result populates an `EditablePuzzle` that the user can correct in `PuzzleEditor`
-5. "Solve Best Path" calls `solveBreachPuzzle` (`lib/solver/breach-solver.ts`) — pure synchronous DFS that enforces alternating row/column traversal and scores by completed sequences, then partial tokens, then spare buffer
+5. "Solve Best Path" calls `solveBreachPuzzle` (`lib/solver/breach-solver.ts`) — synchronous BFS + sequence-optimizer that enforces alternating row/column traversal. Internally delegates to `bruter.ts` (DFS path exploration engine), `sequence-optimizer.ts` (partial/full sequence matching), and `tree.ts` (path-tracking tree). Scores solutions by: completed sequences → partial token count → spare buffer.
 
 **Key types** (`lib/types/breach.ts`): `EditablePuzzle`, `AnalysisResult`, `SolverResult`, `BreachCode` (the six-value union), `DebugToken`.
 
