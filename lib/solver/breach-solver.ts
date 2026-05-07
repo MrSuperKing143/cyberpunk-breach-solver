@@ -1,3 +1,5 @@
+import runSolver from "./bruter";
+import type { Coord } from "./bruter";
 import {
   type BreachCode,
   type EditablePuzzle,
@@ -7,6 +9,9 @@ import {
   filledMatrix,
   sanitizeSequences,
 } from "@/lib/types/breach";
+
+const CODES: BreachCode[] = ["1C", "55", "7A", "BD", "E9", "FF"];
+const CODE_TO_NUM = new Map(CODES.map((c, i) => [c, i] as const));
 
 function containsSequence(path: readonly BreachCode[], sequence: readonly BreachCode[]) {
   if (sequence.length > path.length) {
@@ -87,17 +92,8 @@ function scorePath(
   };
 }
 
-function compareScores(left: SolverScore, right: SolverScore) {
-  return (
-    left.completedCount - right.completedCount ||
-    left.completedTokenCount - right.completedTokenCount ||
-    left.partialProgress - right.partialProgress ||
-    left.spareBuffer - right.spareBuffer
-  );
-}
-
-function cellKey(row: number, col: number) {
-  return `${row}:${col}`;
+function coordsToPath(coords: Coord[], matrix: BreachCode[][]): SolverPathStep[] {
+  return coords.map(({ x, y }) => ({ row: y, col: x, value: matrix[y][x] }));
 }
 
 export function solveBreachPuzzle(puzzle: EditablePuzzle): SolverResult | null {
@@ -118,98 +114,26 @@ export function solveBreachPuzzle(puzzle: EditablePuzzle): SolverResult | null {
     return null;
   }
 
-  let exploredPaths = 0;
-  let bestResult: SolverResult | null = null;
+  const numMatrix = matrix.map((row) => row.map((c) => CODE_TO_NUM.get(c)!));
+  const numSequences = sequences.map((seq) => seq.map((c) => CODE_TO_NUM.get(c)!));
 
-  const updateBest = (path: SolverPathStep[], codeString: BreachCode[]) => {
-    const { matchedSequences, score } = scorePath(codeString, sequences, puzzle.bufferSize!);
+  const result = runSolver(numMatrix, numSequences, puzzle.bufferSize, {
+    useSequencePriorityOrder: false,
+  });
 
-    const candidate: SolverResult = {
-      path: [...path],
-      codeString: [...codeString],
-      matchedSequences,
-      score,
-      exploredPaths,
-    };
-
-    if (!bestResult || compareScores(score, bestResult.score) > 0) {
-      bestResult = candidate;
-      return;
-    }
-
-    if (
-      bestResult &&
-      compareScores(score, bestResult.score) === 0 &&
-      candidate.path.length < bestResult.path.length
-    ) {
-      bestResult = candidate;
-    }
-  };
-
-  const traverse = (
-    path: SolverPathStep[],
-    codeString: BreachCode[],
-    used: Set<string>,
-    nextAxis: "row" | "column",
-  ) => {
-    exploredPaths += 1;
-    updateBest(path, codeString);
-
-    if (path.length >= puzzle.bufferSize!) {
-      return;
-    }
-
-    if (bestResult?.matchedSequences.length === sequences.length) {
-      return;
-    }
-
-    const current = path[path.length - 1];
-    if (!current) {
-      return;
-    }
-
-    if (nextAxis === "column") {
-      for (let row = 0; row < rows; row += 1) {
-        const key = cellKey(row, current.col);
-        if (used.has(key)) {
-          continue;
-        }
-
-        const value = matrix[row][current.col];
-        const nextStep: SolverPathStep = { row, col: current.col, value };
-        const nextUsed = new Set(used);
-        nextUsed.add(key);
-        traverse([...path, nextStep], [...codeString, value], nextUsed, "row");
-      }
-
-      return;
-    }
-
-    for (let col = 0; col < cols; col += 1) {
-      const key = cellKey(current.row, col);
-      if (used.has(key)) {
-        continue;
-      }
-
-      const value = matrix[current.row][col];
-      const nextStep: SolverPathStep = { row: current.row, col, value };
-      const nextUsed = new Set(used);
-      nextUsed.add(key);
-      traverse([...path, nextStep], [...codeString, value], nextUsed, "column");
-    }
-  };
-
-  for (let col = 0; col < cols; col += 1) {
-    const value = matrix[0][col];
-    const start: SolverPathStep = { row: 0, col, value };
-    traverse([start], [value], new Set([cellKey(0, col)]), "column");
-  }
-
-  if (!bestResult) {
+  if (!result) {
     return null;
   }
 
-  const finalResult = bestResult as SolverResult;
-  finalResult.exploredPaths = exploredPaths;
-  return finalResult;
+  const path = coordsToPath(result.solution, matrix);
+  const codeString = path.map((s) => s.value);
+  const { matchedSequences, score } = scorePath(codeString, sequences, puzzle.bufferSize);
+
+  return {
+    path,
+    codeString,
+    matchedSequences,
+    score,
+    exploredPaths: 0,
+  };
 }
