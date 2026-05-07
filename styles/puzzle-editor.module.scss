@@ -139,7 +139,7 @@
   white-space: nowrap;
 }
 
-// Token field: keyboard-based chip input
+// Token field: chip input with embedded text input
 .tokenField {
   display: flex;
   flex-wrap: wrap;
@@ -148,14 +148,29 @@
   min-height: 28px;
   padding: 3px 4px;
   background: transparent;
-  outline: none;
   cursor: text;
-  transition: border-color 0.12s, background 0.12s;
+  transition: background 0.12s;
 
-  &:focus,
-  &.focused {
+  &:focus-within {
     background: $panel-strong;
+
+    .tokenPlaceholder {
+      display: none;
+    }
   }
+}
+
+.tokenInput {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: $accent;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  width: 2ch;
+  caret-color: var(--accent);
 }
 
 .tokenChip {
@@ -174,13 +189,6 @@
   letter-spacing: 0.06em;
   opacity: 0.7;
   user-select: none;
-}
-
-.tokenCaret {
-  width: 2px;
-  height: 14px;
-  background: var(--accent);
-  animation: caret 1s steps(2) infinite;
 }
 
 // Status badge
@@ -211,7 +219,3 @@
   opacity: 0.5;
 }
 
-// Animations
-@keyframes caret {
-  50% { opacity: 0; }
-}

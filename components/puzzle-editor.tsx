@@ -65,7 +65,7 @@ function SizePicker({
 }
 
 // ── TokenSequenceField ────────────────────────────────────────────────────────
-// Keyboard-driven chip input: type first char of a code to append it, Backspace removes last.
+// Chip input: type first char of a code to append it, Backspace removes last.
 function TokenSequenceField({
   tokens,
   onChange,
@@ -73,28 +73,21 @@ function TokenSequenceField({
   tokens: CodeValue[];
   onChange: (next: CodeValue[]) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState("");
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === "Backspace") {
-      e.preventDefault();
-      if (tokens.length > 0) onChange(tokens.slice(0, -1));
-      return;
+  const onDraftChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    for (const ch of e.target.value.toUpperCase()) {
+      const code = FIRST_CHAR_MAP[ch];
+      if (code) { onChange([...tokens, code]); setDraft(""); return; }
     }
-    if (e.key === " " || e.key === "," || e.key === "Tab" || e.key === "Enter") {
+    setDraft("");
+  };
+
+  const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && draft === "" && tokens.length > 0) {
       e.preventDefault();
-      return;
-    }
-    if (e.key.length === 1) {
-      const code = FIRST_CHAR_MAP[e.key.toUpperCase()];
-      if (code) {
-        e.preventDefault();
-        onChange([...tokens, code]);
-      } else {
-        e.preventDefault();
-      }
+      onChange(tokens.slice(0, -1));
     }
   };
 
@@ -115,22 +108,23 @@ function TokenSequenceField({
 
   return (
     <div
-      ref={ref}
-      tabIndex={0}
-      className={`${styles.tokenField} ${focused ? styles.focused : ""}`}
-      onKeyDown={onKeyDown}
-      onPaste={onPaste}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      onClick={() => ref.current?.focus()}
+      className={styles.tokenField}
+      onClick={() => inputRef.current?.focus()}
     >
-      {tokens.length === 0 && (
+      {tokens.length === 0 && draft === "" && (
         <span className={styles.tokenPlaceholder}>type 1·5·7·B·E·F</span>
       )}
       {tokens.map((t, i) => (
         <span className={styles.tokenChip} key={i}>{t}</span>
       ))}
-      {focused && <span className={styles.tokenCaret} />}
+      <input
+        ref={inputRef}
+        className={styles.tokenInput}
+        value={draft}
+        onChange={onDraftChange}
+        onKeyDown={onInputKeyDown}
+        onPaste={onPaste}
+      />
     </div>
   );
 }
