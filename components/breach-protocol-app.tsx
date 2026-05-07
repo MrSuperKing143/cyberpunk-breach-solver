@@ -50,6 +50,7 @@ export function BreachProtocolApp() {
   const [revealed, setRevealed] = useState(0);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploadUrlRef = useRef<string | null>(null);
+  const autoAnalyzedRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -133,6 +134,13 @@ export function BreachProtocolApp() {
       setBusyAction(null);
     }
   };
+
+  useEffect(() => {
+    if (!preview || preview.src === autoAnalyzedRef.current) return;
+    autoAnalyzedRef.current = preview.src;
+    void handleAnalyze();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview]);
 
   const handleSolve = async () => {
     const issues = validatePuzzle(editablePuzzle);
