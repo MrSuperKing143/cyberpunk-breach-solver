@@ -18,7 +18,7 @@ export function SolverResults({
   revealed,
   solverResult,
 }: SolverResultsProps) {
-  const effectiveSize = bufferSize ?? 8;
+  const effectiveSize = bufferSize ?? 4;
   const tokens = solverResult?.path.slice(0, revealed).map((s) => s.value) ?? [];
   const sizeIdx = BUFFER_OPTIONS.indexOf(effectiveSize);
 
@@ -57,10 +57,7 @@ export function SolverResults({
 
       {/* Buffer slots */}
       <div className={styles.bufferWrap}>
-        <div
-          className={styles.bufferGrid}
-          style={{ gridTemplateColumns: `repeat(${effectiveSize}, 1fr)` }}
-        >
+        <div className={styles.bufferGrid}>
           {Array.from({ length: effectiveSize }).map((_, i) => {
             const filled = i < revealed;
             return (
