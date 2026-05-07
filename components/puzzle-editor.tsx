@@ -139,6 +139,8 @@ export function PuzzleEditor({
   revealed,
   solverResult,
 }: PuzzleEditorProps) {
+  const matrixInputRefs = useRef<(HTMLInputElement | null)[][]>([]);
+
   const lowConfidenceMatrix = new Set(
     analysis?.debug.matrixTokens
       .filter((t) => t.confidence < 0.55)
@@ -160,6 +162,10 @@ export function PuzzleEditor({
         ri === row ? r.map((v, ci) => (ci === col ? value : v)) : r,
       ),
     });
+  };
+
+  const focusCell = (row: number, col: number) => {
+    matrixInputRefs.current[row]?.[col]?.focus();
   };
 
   const updateSequence = (rowIndex: number, tokens: CodeValue[]) => {
@@ -261,16 +267,49 @@ export function PuzzleEditor({
                         {String((stepIdx ?? 0) + 1).padStart(2, "0")}
                       </span>
                     )}
-                    <select
-                      className={styles.matrixSelect}
-                      onChange={(e) => updateMatrixCell(rowIdx, colIdx, e.target.value as CodeValue)}
+                    <input
+                      ref={(el) => {
+                        if (!matrixInputRefs.current[rowIdx]) matrixInputRefs.current[rowIdx] = [];
+                        matrixInputRefs.current[rowIdx][colIdx] = el;
+                      }}
+                      className={styles.matrixInput}
                       value={value}
-                    >
-                      <option value="">--</option>
-                      {BREACH_CODES.map((code) => (
-                        <option key={code} value={code}>{code}</option>
-                      ))}
-                    </select>
+                      placeholder="--"
+                      onChange={() => {}}
+                      onKeyDown={(e) => {
+                        const code = FIRST_CHAR_MAP[e.key.toUpperCase()];
+                        if (code) {
+                          e.preventDefault();
+                          updateMatrixCell(rowIdx, colIdx, code);
+                          if (colIdx + 1 < N) focusCell(rowIdx, colIdx + 1);
+                          else if (rowIdx + 1 < N) focusCell(rowIdx + 1, 0);
+                        } else if (e.key === "Backspace" || e.key === "Delete") {
+                          e.preventDefault();
+                          if (value !== "") {
+                            updateMatrixCell(rowIdx, colIdx, "");
+                          } else {
+                            const prevCol = colIdx > 0 ? colIdx - 1 : N - 1;
+                            const prevRow = colIdx > 0 ? rowIdx : rowIdx - 1;
+                            if (prevRow >= 0) {
+                              updateMatrixCell(prevRow, prevCol, "");
+                              focusCell(prevRow, prevCol);
+                            }
+                          }
+                        } else if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          if (colIdx + 1 < N) focusCell(rowIdx, colIdx + 1);
+                        } else if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          if (colIdx > 0) focusCell(rowIdx, colIdx - 1);
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          if (rowIdx + 1 < N) focusCell(rowIdx + 1, colIdx);
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          if (rowIdx > 0) focusCell(rowIdx - 1, colIdx);
+                        }
+                      }}
+                    />
                   </div>
                 );
               }),

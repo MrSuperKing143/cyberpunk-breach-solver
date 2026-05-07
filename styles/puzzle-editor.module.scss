@@ -66,12 +66,11 @@
   line-height: 1;
 }
 
-.matrixSelect {
+.matrixInput {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  appearance: none;
   border: none;
   background: transparent;
   color: inherit;
@@ -81,19 +80,24 @@
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  cursor: pointer;
   outline: none;
   padding: 0;
   z-index: 2;
+  caret-color:  var(--accent);
+
+  &::placeholder {
+    color: $ink-faint;
+    opacity: 0.5;
+  }
 
   &:focus {
     background: rgba(255, 255, 255, 0.06);
     outline: 1px solid $line-strong;
+    cursor: text;
   }
 
-  option {
-    background: $bg-soft;
-    color: $text;
+  &:focus::placeholder {
+    color: transparent;
   }
 }
 
