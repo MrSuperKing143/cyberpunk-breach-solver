@@ -132,9 +132,9 @@
 }
 
 .sequenceNum {
-  font-size: 11px;
+  font-size: 13px;
   color: $ink-faint;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -146,8 +146,7 @@
   align-items: center;
   gap: 4px;
   min-height: 28px;
-  padding: 3px 8px;
-  border: 1px dashed $line;
+  padding: 3px 4px;
   background: transparent;
   outline: none;
   cursor: text;
@@ -155,16 +154,14 @@
 
   &:focus,
   &.focused {
-    border: 1px solid var(--accent);
     background: $panel-strong;
   }
 }
 
 .tokenChip {
-  padding: 3px 7px;
-  border: 1px solid var(--accent);
+  padding: 0px 4px;
   color: $text;
-  font-size: 12px;
+  font-size: 1.25rem;
   font-weight: 700;
   line-height: 1.2;
   user-select: none;
@@ -173,7 +170,7 @@
 
 .tokenPlaceholder {
   color: $ink-faint;
-  font-size: 11px;
+  font-size: 1.15rem;
   letter-spacing: 0.06em;
   opacity: 0.7;
   user-select: none;
@@ -191,7 +188,7 @@
   padding: 4px 10px;
   border: 1.5px solid $ink-faint;
   color: $ink-faint;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
