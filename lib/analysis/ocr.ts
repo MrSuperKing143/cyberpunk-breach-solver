@@ -89,7 +89,7 @@ async function getWorker() {
   if (!ocrWorkerPromise) {
     ocrWorkerPromise = import("tesseract.js").then(async (module) => {
       const worker = await module.createWorker("cp2077_breach", 1, {
-        langPath: "/tessdata",
+        langPath: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/tessdata`,
       });
       await worker.setParameters({
         preserve_interword_spaces: "1",
