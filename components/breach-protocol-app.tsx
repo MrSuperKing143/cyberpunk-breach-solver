@@ -36,6 +36,7 @@ function resizeMatrix(matrix: EditablePuzzle["matrix"], size: number) {
 }
 
 export function BreachProtocolApp() {
+  "use no memo";
   const [preview, setPreview] = useState<PreviewSource | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [editablePuzzle, setEditablePuzzle] = useState<EditablePuzzle>(
