@@ -20,33 +20,37 @@ declare global {
 
 let openCvPromise: Promise<OpenCvRuntime> | null = null;
 
-function isReadyRuntime(runtime: unknown): runtime is OpenCvRuntime {
+function isReady(cv: unknown): cv is OpenCvRuntime {
   return Boolean(
-    runtime &&
-      typeof runtime === "object" &&
-      "Mat" in runtime &&
-      typeof runtime.Mat === "function" &&
-      "imread" in runtime &&
-      typeof runtime.imread === "function",
+    cv &&
+      typeof cv === "object" &&
+      "Mat" in cv &&
+      typeof cv.Mat === "function" &&
+      "imread" in cv &&
+      typeof cv.imread === "function",
   );
 }
 
-function isPromiseLikeRuntime(runtime: OpenCvModule | undefined): runtime is Promise<OpenCvRuntime> {
-  return Boolean(runtime && typeof runtime === "object" && "then" in runtime);
+function isPromiseLike(cv: OpenCvModule | undefined): cv is Promise<OpenCvRuntime> {
+  return Boolean(
+    cv &&
+      typeof cv === "object" &&
+      typeof (cv as Record<string, unknown>).then === "function",
+  );
 }
 
-function waitForCallbackRuntime(runtime: OpenCvRuntime) {
+function waitForInit(runtime: OpenCvRuntime): Promise<OpenCvRuntime> {
   return new Promise<OpenCvRuntime>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       reject(new Error("OpenCV.js timed out while initialising."));
     }, 15000);
 
     const previous = runtime.onRuntimeInitialized;
     runtime.onRuntimeInitialized = () => {
-      window.clearTimeout(timeout);
+      window.clearTimeout(timer);
       previous?.();
 
-      if (!isReadyRuntime(runtime)) {
+      if (!isReady(runtime)) {
         reject(new Error("OpenCV.js initialised without exposing the expected runtime methods."));
         return;
       }
@@ -56,17 +60,17 @@ function waitForCallbackRuntime(runtime: OpenCvRuntime) {
   });
 }
 
-async function resolveRuntime() {
-  const runtime = window.cv;
+async function resolveRuntime(): Promise<OpenCvRuntime> {
+  const cv = window.cv;
 
-  if (!runtime) {
+  if (!cv) {
     throw new Error("OpenCV.js did not attach itself to window.cv.");
   }
 
-  if (isPromiseLikeRuntime(runtime)) {
-    const resolved = await runtime;
+  if (isPromiseLike(cv)) {
+    const resolved = await cv;
 
-    if (!isReadyRuntime(resolved)) {
+    if (!isReady(resolved)) {
       throw new Error("OpenCV.js resolved, but the runtime methods are unavailable.");
     }
 
@@ -74,68 +78,41 @@ async function resolveRuntime() {
     return resolved;
   }
 
-  if (isReadyRuntime(runtime)) {
-    return runtime;
-  }
-
-  return waitForCallbackRuntime(runtime);
+  return isReady(cv) ? cv : waitForInit(cv);
 }
 
-export async function loadOpenCv() {
-  if (!openCvPromise) {
-    openCvPromise = new Promise<OpenCvRuntime>((resolve, reject) => {
-      if (typeof window === "undefined") {
-        reject(new Error("OpenCV.js can only load in the browser."));
-        return;
-      }
+function ensureScript(): Promise<void> {
+  const existing = document.querySelector<HTMLScriptElement>(
+    'script[data-opencv-runtime="true"]',
+  );
+  const el = existing ?? (() => {
+    const s = document.createElement("script");
+    s.src = "/vendor/opencv.js";
+    s.async = true;
+    s.dataset.opencvRuntime = "true";
+    document.body.appendChild(s);
+    return s;
+  })();
+  return new Promise((resolve, reject) => {
+    el.addEventListener("load", () => resolve(), { once: true });
+    el.addEventListener("error", () => reject(new Error("OpenCV.js failed to load.")), { once: true });
+  });
+}
 
-      if (window.cv) {
-        void resolveRuntime().then(resolve).catch(reject);
-        return;
-      }
+export async function loadOpenCv(): Promise<OpenCvRuntime> {
+  if (openCvPromise) return openCvPromise;
 
-      const existingScript = document.querySelector<HTMLScriptElement>(
-        'script[data-opencv-runtime="true"]',
-      );
+  openCvPromise = (async () => {
+    if (typeof window === "undefined") {
+      throw new Error("OpenCV.js can only load in the browser.");
+    }
 
-      if (existingScript) {
-        existingScript.addEventListener(
-          "load",
-          () => {
-            void resolveRuntime().then(resolve).catch(reject);
-          },
-          { once: true },
-        );
-        existingScript.addEventListener(
-          "error",
-          () => reject(new Error("OpenCV.js failed to load.")),
-          { once: true },
-        );
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = "/vendor/opencv.js";
-      script.async = true;
-      script.dataset.opencvRuntime = "true";
-      script.addEventListener(
-        "load",
-        () => {
-          void resolveRuntime().then(resolve).catch(reject);
-        },
-        { once: true },
-      );
-      script.addEventListener(
-        "error",
-        () => reject(new Error("OpenCV.js failed to load.")),
-        { once: true },
-      );
-      document.body.appendChild(script);
-    }).catch((error) => {
-      openCvPromise = null;
-      throw error;
-    });
-  }
+    if (!window.cv) await ensureScript();
+    return resolveRuntime();
+  })().catch((error) => {
+    openCvPromise = null;
+    throw error;
+  });
 
   return openCvPromise;
 }
