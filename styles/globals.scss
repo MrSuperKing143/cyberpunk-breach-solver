@@ -1,38 +1,5 @@
 @use "./variables" as *;
 
-@font-face {
-  font-family: "Rajdhani";
-  src:
-    url("/fonts/subset-Rajdhani-Bold.woff2") format("woff2"),
-    url("/fonts/subset-Rajdhani-Bold.woff") format("woff"),
-    url("/fonts/subset-Rajdhani-Bold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Rajdhani";
-  src:
-    url("/fonts/subset-Rajdhani-Medium.woff2") format("woff2"),
-    url("/fonts/subset-Rajdhani-Medium.woff") format("woff"),
-    url("/fonts/subset-Rajdhani-Medium.ttf") format("truetype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Rajdhani";
-  src:
-    url("/fonts/subset-Rajdhani-Regular.woff2") format("woff2"),
-    url("/fonts/subset-Rajdhani-Regular.woff") format("woff"),
-    url("/fonts/subset-Rajdhani-Regular.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   color-scheme: dark;
   --bg: #{$bg};

@@ -87,7 +87,7 @@ function ensureScript(): Promise<void> {
   );
   const el = existing ?? (() => {
     const s = document.createElement("script");
-    s.src = "/vendor/opencv.js";
+    s.src = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/vendor/opencv.js`;
     s.async = true;
     s.dataset.opencvRuntime = "true";
     document.body.appendChild(s);
