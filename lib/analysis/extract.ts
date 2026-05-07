@@ -14,6 +14,7 @@ import {
   integerRect,
   matColSums,
   matRowSums,
+  preprocessCellMat,
   preprocessEdgesForGrid,
   safeDelete,
   trimEdgeNoise,
@@ -45,90 +46,36 @@ function createCanvas(width: number, height: number) {
 }
 
 function cropForOcr(cv: any, source: any, rect: Rect) {
-  const x = Math.max(Math.floor(rect.x), 0);
-  const y = Math.max(Math.floor(rect.y), 0);
-  const crop = source.roi(
-    new cv.Rect(
-      x,
-      y,
-      Math.min(Math.ceil(rect.width), source.cols - x),
-      Math.min(Math.ceil(rect.height), source.rows - y),
-    ),
-  );
-  const { rows: h, cols: w } = crop;
-
-  const upscaled = new cv.Mat();
-  const gray = new cv.Mat();
-  const enhanced = new cv.Mat();
-  const sharpenKernel = cv.matFromArray(3, 3, cv.CV_32F, [0, -1, 0, -1, 5, -1, 0, -1, 0]);
-  const sharpened = new cv.Mat();
-  const binary = new cv.Mat();
-  const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-  const cleaned = new cv.Mat();
-
-  try {
-    cv.resize(crop, upscaled, new cv.Size(w * 5, h * 5), 0, 0, cv.INTER_CUBIC);
-    cv.cvtColor(upscaled, gray, cv.COLOR_RGBA2GRAY);
-
-    const clahe = new cv.CLAHE(3.0, new cv.Size(4, 4));
-    clahe.apply(gray, enhanced);
-    clahe.delete();
-
-    cv.filter2D(enhanced, sharpened, -1, sharpenKernel);
-    cv.threshold(sharpened, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-
-    // Sample border pixels to detect background brightness
-    const { rows: bh, cols: bw } = binary;
-    const bdata = binary.data as Uint8Array;
-    let sum = 0, count = 0;
-    for (let c = 0; c < bw; c++) { sum += bdata[c]; sum += bdata[(bh - 1) * bw + c]; count += 2; }
-    for (let r = 1; r < bh - 1; r++) { sum += bdata[r * bw]; sum += bdata[r * bw + bw - 1]; count += 2; }
-    const bgIsDark = (sum / count) < 127;
-    if (!bgIsDark) cv.bitwise_not(binary, binary);
-
-    cv.morphologyEx(binary, cleaned, cv.MORPH_OPEN, morphKernel, new cv.Point(-1, -1), 2);
-    cv.morphologyEx(cleaned, cleaned, cv.MORPH_CLOSE, morphKernel, new cv.Point(-1, -1), 1);
-
-    // Tesseract expects dark text on white background
-    if (bgIsDark) cv.bitwise_not(cleaned, cleaned);
-
-    // Trim whitespace: scan pixel data to find bounding box of dark (text) pixels
-    const { rows: ch, cols: cw } = cleaned;
-    const cdata = cleaned.data as Uint8Array;
-    let minX = cw, maxX = -1, minY = ch, maxY = -1;
-    for (let row = 0; row < ch; row++) {
-      for (let col = 0; col < cw; col++) {
-        if (cdata[row * cw + col] < 128) {
-          if (col < minX) minX = col;
-          if (col > maxX) maxX = col;
-          if (row < minY) minY = row;
-          if (row > maxY) maxY = row;
-        }
-      }
-    }
-    if (maxX >= 0) {
-      const pad = 8;
-      const x = Math.max(0, minX - pad);
-      const y = Math.max(0, minY - pad);
-      const tw = Math.min(cw - x, maxX - minX + 1 + 2 * pad);
-      const th = Math.min(ch - y, maxY - minY + 1 + 2 * pad);
-      const tight = cleaned.roi(new cv.Rect(x, y, tw, th));
-      const canvas = createCanvas(tight.cols, tight.rows);
-      cv.imshow(canvas, tight);
-      tight.delete();
-      return canvas;
-    }
-
-    const canvas = createCanvas(cleaned.cols, cleaned.rows);
-    cv.imshow(canvas, cleaned);
-    return canvas;
-  } finally {
-    safeDelete(crop, upscaled, gray, enhanced, sharpenKernel, sharpened, binary, morphKernel, cleaned);
-  }
+  const mat = preprocessCellMat(cv, source, rect);
+  const canvas = createCanvas(mat.cols, mat.rows);
+  cv.imshow(canvas, mat);
+  mat.delete();
+  return canvas;
 }
 
-function emptyMatrix(rows: number, cols: number) {
-  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => "" as CodeValue));
+async function recognizeCellRect(
+  cv: any,
+  source: any,
+  row: number,
+  col: number,
+  rect: Rect,
+): Promise<{ value: CodeValue; debugToken: DebugToken }> {
+  const canvas = cropForOcr(cv, source, rect);
+  const maskDataUrl = canvas.toDataURL("image/png");
+  const token = await recognizeCodeToken(canvas);
+  return {
+    value: token.value,
+    debugToken: {
+      row,
+      col,
+      rect,
+      center: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+      rawText: token.rawText,
+      value: token.value,
+      confidence: token.confidence,
+      maskDataUrl,
+    },
+  };
 }
 
 async function extractMatrix(
@@ -157,7 +104,9 @@ async function extractMatrix(
   const rowBounds = centersToBounds(rowCenters, edgeH);
   const nRows = rowBounds.length - 1;
   const nCols = colBounds.length - 1;
-  const matrix = emptyMatrix(nRows, nCols);
+  const matrix: CodeValue[][] = Array.from({ length: nRows }, () =>
+    Array.from({ length: nCols }, () => "" as CodeValue),
+  );
   const debugTokens: DebugToken[] = [];
 
   for (let r = 0; r < nRows; r++) {
@@ -168,20 +117,9 @@ async function extractMatrix(
         width: colBounds[c + 1] - colBounds[c],
         height: rowBounds[r + 1] - rowBounds[r],
       });
-      const canvas = cropForOcr(cv, source, cellRect);
-      const maskDataUrl = canvas.toDataURL("image/png");
-      const token = await recognizeCodeToken(canvas);
-      matrix[r][c] = token.value;
-      debugTokens.push({
-        row: r,
-        col: c,
-        rect: cellRect,
-        center: { x: cellRect.x + cellRect.width / 2, y: cellRect.y + cellRect.height / 2 },
-        rawText: token.rawText,
-        value: token.value,
-        confidence: token.confidence,
-        maskDataUrl,
-      });
+      const { value, debugToken } = await recognizeCellRect(cv, source, r, c, cellRect);
+      matrix[r][c] = value;
+      debugTokens.push(debugToken);
     }
   }
 
@@ -245,20 +183,9 @@ async function extractSequences(
         width: colBounds[c + 1] - colBounds[c],
         height: rowBounds[r + 1] - rowBounds[r],
       });
-      const canvas = cropForOcr(cv, source, cellRect);
-      const maskDataUrl = canvas.toDataURL("image/png");
-      const token = await recognizeCodeToken(canvas);
-      sequences[r].push(token.value);
-      debugTokens.push({
-        row: r,
-        col: c,
-        rect: cellRect,
-        center: { x: cellRect.x + cellRect.width / 2, y: cellRect.y + cellRect.height / 2 },
-        rawText: token.rawText,
-        value: token.value,
-        confidence: token.confidence,
-        maskDataUrl,
-      });
+      const { value, debugToken } = await recognizeCellRect(cv, source, r, c, cellRect);
+      sequences[r].push(value);
+      debugTokens.push(debugToken);
     }
   }
 

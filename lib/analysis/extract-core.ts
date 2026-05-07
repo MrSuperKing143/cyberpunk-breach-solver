@@ -161,6 +161,88 @@ export function trimEdgeNoise(cv: any, source: any, rect: Rect, maxInset = 20): 
   }
 }
 
+// CLAHE+sharpen+Otsu+morph+trim pipeline for a single cell crop. Caller must delete the returned Mat.
+export function preprocessCellMat(cv: any, source: any, rect: Rect): any {
+  const x = Math.max(Math.floor(rect.x), 0);
+  const y = Math.max(Math.floor(rect.y), 0);
+  const crop = source.roi(
+    new cv.Rect(
+      x,
+      y,
+      Math.min(Math.ceil(rect.width), source.cols - x),
+      Math.min(Math.ceil(rect.height), source.rows - y),
+    ),
+  );
+  const { rows: h, cols: w } = crop;
+  const upscaled      = new cv.Mat();
+  const gray          = new cv.Mat();
+  const enhanced      = new cv.Mat();
+  const sharpenKernel = cv.matFromArray(3, 3, cv.CV_32F, [0, -1, 0, -1, 5, -1, 0, -1, 0]);
+  const sharpened     = new cv.Mat();
+  const binary        = new cv.Mat();
+  const morphKernel   = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+  const cleaned       = new cv.Mat();
+
+  try {
+    cv.resize(crop, upscaled, new cv.Size(w * 5, h * 5), 0, 0, cv.INTER_CUBIC);
+    cv.cvtColor(upscaled, gray, cv.COLOR_RGBA2GRAY);
+
+    const clahe = new cv.CLAHE(3.0, new cv.Size(4, 4));
+    clahe.apply(gray, enhanced);
+    clahe.delete();
+
+    cv.filter2D(enhanced, sharpened, -1, sharpenKernel);
+    cv.threshold(sharpened, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+
+    const { rows: bh, cols: bw } = binary;
+    const bdata = binary.data as Uint8Array;
+    let sum = 0, count = 0;
+    for (let c = 0; c < bw; c++) { sum += bdata[c]; sum += bdata[(bh - 1) * bw + c]; count += 2; }
+    for (let r = 1; r < bh - 1; r++) { sum += bdata[r * bw]; sum += bdata[r * bw + bw - 1]; count += 2; }
+    const bgIsDark = (sum / count) < 127;
+    if (!bgIsDark) cv.bitwise_not(binary, binary);
+
+    cv.morphologyEx(binary, cleaned, cv.MORPH_OPEN,  morphKernel, new cv.Point(-1, -1), 2);
+    cv.morphologyEx(cleaned, cleaned, cv.MORPH_CLOSE, morphKernel, new cv.Point(-1, -1), 1);
+    if (bgIsDark) cv.bitwise_not(cleaned, cleaned);
+
+    const { rows: ch, cols: cw } = cleaned;
+    const cdata = cleaned.data as Uint8Array;
+    let minX = cw, maxX = -1, minY = ch, maxY = -1;
+    for (let row = 0; row < ch; row++) {
+      for (let col = 0; col < cw; col++) {
+        if (cdata[row * cw + col] < 128) {
+          if (col < minX) minX = col;
+          if (col > maxX) maxX = col;
+          if (row < minY) minY = row;
+          if (row > maxY) maxY = row;
+        }
+      }
+    }
+
+    let result: any;
+    if (maxX >= 0) {
+      const pad = 8;
+      const tx = Math.max(0, minX - pad);
+      const ty = Math.max(0, minY - pad);
+      const tw = Math.min(cw - tx, maxX - minX + 1 + 2 * pad);
+      const th = Math.min(ch - ty, maxY - minY + 1 + 2 * pad);
+      const tightRoi = cleaned.roi(new cv.Rect(tx, ty, tw, th));
+      result = new cv.Mat();
+      tightRoi.copyTo(result);
+      safeDelete(tightRoi, cleaned);
+    } else {
+      result = cleaned; // caller deletes
+    }
+
+    safeDelete(crop, upscaled, gray, enhanced, sharpenKernel, sharpened, binary, morphKernel);
+    return result;
+  } catch (error) {
+    safeDelete(crop, upscaled, gray, enhanced, sharpenKernel, sharpened, binary, morphKernel, cleaned);
+    throw error;
+  }
+}
+
 // Gaussian blur → Canny → 5-iteration dilation; caller must delete the returned Mat.
 export function preprocessEdgesForGrid(cv: any, source: any, rect: Rect): any {
   const crop = source.roi(new cv.Rect(rect.x, rect.y, rect.width, rect.height));
